@@ -1,0 +1,21 @@
+# Ansible Vault password-fil: aldrig i Git, ellers er krypteringen meningsløs
+.vault_pass
+
+# Kundespecifikke inventory-filer: IP og stier hører ikke i et delt repo.
+# Vi committer i stedet en hosts.yml.example som skabelon (se nedenfor).
+inventories/*/hosts.yml
+
+# Private SSH-nøgler: fang dem hvis de nogensinde lander i projektmappen
+*.pem
+*.key
+
+# Ansible-støj
+*.retry
+
+# Python-cache
+__pycache__/
+*.pyc
+
+# Editor-filer
+.vscode/
+*.swp
