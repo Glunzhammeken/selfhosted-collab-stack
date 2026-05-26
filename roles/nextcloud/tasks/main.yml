@@ -122,9 +122,20 @@
     success_msg: "Nextcloud AIO master-container kører."
     fail_msg: "ADVARSEL: Nextcloud AIO master-container kører ikke."
 
+- name: Vent på at nextcloud-aio-apache er klar på port 11000
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 11000
+    timeout: 120
+    delay: 5
+
 - name: Verificér at Nextcloud er tilgængeligt via HTTPS
   ansible.builtin.uri:
     url: "https://{{ nextcloud_domain }}"
     status_code: [200, 302]
     validate_certs: true
+  register: nextcloud_https_check
+  retries: 12
+  delay: 10
+  until: nextcloud_https_check.status in [200, 302]
   changed_when: false
