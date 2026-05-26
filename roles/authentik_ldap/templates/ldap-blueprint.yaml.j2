@@ -26,6 +26,8 @@ entries:
       roles:
         - !KeyOf role-ldap-search
 
+  # LDAP provider: search_full_directory tildeles direkte på entry'en via permissions:
+  # (svarer til guidens trin 6 — "Assign Object Permissions" på providerens RBAC-fane)
   - model: authentik_providers_ldap.ldapprovider
     state: present
     id: ldap-provider
@@ -33,11 +35,14 @@ entries:
       name: ldap-provider
     attrs:
       authorization_flow: !Find [authentik_flows.flow, [slug, default-authentication-flow]]
-      bind_flow: !Find [authentik_flows.flow, [slug, default-authentication-flow]]
+      authentication_flow: !Find [authentik_flows.flow, [slug, default-authentication-flow]]
       invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
       base_dn: "{{ authentik_ldap_base_dn }}"
       bind_mode: cached
       search_mode: cached
+    permissions:
+      - permission: search_full_directory
+        role: ldap-search
 
   - model: authentik_core.application
     state: present
@@ -71,13 +76,3 @@ entries:
         authentik_host: "{{ authentik_url }}"
         authentik_host_insecure: false
         docker_map_ports: false
-
-  # object_pk er CharField i Django — !KeyOf returnerer integer-PK, Django coercer til string
-  - model: authentik_rbac.objectpermission
-    state: present
-    identifiers:
-      role: !KeyOf role-ldap-search
-      permission: search_full_ldap_directory
-      content_type: !Find [contenttypes.contenttype, [app_label, authentik_providers_ldap], [model, ldapprovider]]
-      object_pk: !KeyOf ldap-provider
-    attrs: {}

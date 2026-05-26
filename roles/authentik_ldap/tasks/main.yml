@@ -135,8 +135,8 @@
     that: _ldap_result.stdout_lines | select('match', '^cn:') | list | length >= 2
     fail_msg: >
       LDAP-search returnerede for få brugere.
-      Tjek at search_full_ldap_directory-permissionen er tildelt ldap-search rollen
-      via objectpermission-indgangen i blueprintet.
+      Tjek at search_full_directory-permissionen er tildelt ldap-search rollen
+      via permissions:-feltet på ldap-provider-indgangen i blueprintet.
     success_msg: "LDAP-outpost kørende — full directory search virker."
 
 - name: Vis fundne LDAP-brugere
