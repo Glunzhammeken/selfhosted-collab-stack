@@ -287,7 +287,7 @@
 # ──────────────────────────────────────────────
 - name: Tjek om docker-socket-proxy service connection eksisterer
   ansible.builtin.uri:
-    url: "{{ _ak }}/outposts/service-connections/docker/?name=docker-socket-proxy"
+    url: "{{ _ak }}/outposts/service_connections/docker/?name=docker-socket-proxy"
     method: GET
     headers: "{{ _ak_h }}"
     validate_certs: true
@@ -295,7 +295,7 @@
 
 - name: Opret docker-socket-proxy service connection
   ansible.builtin.uri:
-    url: "{{ _ak }}/outposts/service-connections/docker/"
+    url: "{{ _ak }}/outposts/service_connections/docker/"
     method: POST
     body_format: json
     body:
