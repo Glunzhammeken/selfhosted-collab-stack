@@ -1,0 +1,8 @@
+---
+# Ingen justérbare variabler i hardening endnu.
+# Hvis en kunde senere skal kunne slå Talk-porte fra, tilføjes en
+# variabel her, og port-loopet i tasks/main.yml gøres betinget.
+
+# Tidspunkt for automatisk genstart, hvis en sikkerhedsopdatering kræver det.
+# Bør afstemmes med kundens forventninger til nedetid.
+unattended_upgrades_reboot_time: "04:00"

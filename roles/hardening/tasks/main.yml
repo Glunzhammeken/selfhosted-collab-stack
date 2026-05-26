@@ -1,0 +1,79 @@
+---
+- name: Åbn applikations-porte (HTTP, HTTPS, Talk TURN)
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+  loop:
+    - { port: "80", proto: tcp }
+    - { port: "443", proto: tcp }
+    - { port: "3478", proto: tcp }
+    - { port: "3478", proto: udp }
+
+- name: Installér pakker til automatiske opdateringer
+  ansible.builtin.apt:
+    name:
+      - unattended-upgrades
+      - apt-listchanges
+      - needrestart
+    state: present
+    update_cache: true
+
+- name: Læg apt periodic-konfiguration ud (statisk)
+  ansible.builtin.copy:
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Download-Upgradeable-Packages "1";
+      APT::Periodic::AutocleanInterval "7";
+      APT::Periodic::Unattended-Upgrade "1";
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Genstart unattended-upgrades
+
+- name: Læg unattended-upgrades-konfiguration ud fra skabelon
+  ansible.builtin.template:
+    src: 50unattended-upgrades.j2
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Genstart unattended-upgrades
+
+- name: Aktivér ændringer nu før verifikation
+  ansible.builtin.meta: flush_handlers
+
+- name: Sørg for at unattended-upgrades kører og starter ved boot
+  ansible.builtin.systemd_service:
+    name: unattended-upgrades
+    state: started
+    enabled: true
+
+# Verifikation
+- name: Hent UFW-status
+  ansible.builtin.command: ufw status verbose
+  register: ufw_status_check
+  changed_when: false
+
+- name: Bekræft at applikations-porte er åbne
+  ansible.builtin.assert:
+    that:
+      - "'80/tcp' in ufw_status_check.stdout"
+      - "'443/tcp' in ufw_status_check.stdout"
+      - "'3478/tcp' in ufw_status_check.stdout"
+      - "'3478/udp' in ufw_status_check.stdout"
+    success_msg: "Applikations-porte (80, 443, 3478 tcp+udp) er åbne i UFW."
+    fail_msg: "ADVARSEL: en eller flere applikations-porte mangler i UFW."
+
+- name: Bekræft at SSH stadig er hærdet (sat i baseline)
+  ansible.builtin.command: sshd -T
+  register: sshd_effective_config
+  changed_when: false
+
+- name: Fastslå at password-login fortsat er deaktiveret
+  ansible.builtin.assert:
+    that:
+      - "'passwordauthentication no' in sshd_effective_config.stdout"
+    success_msg: "SSH er stadig hærdet: password-login er deaktiveret."
+    fail_msg: "ADVARSEL: password-login er aktivt igen. Kør baseline-rollen."
