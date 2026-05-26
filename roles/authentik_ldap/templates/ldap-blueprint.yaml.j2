@@ -42,7 +42,7 @@ entries:
       search_mode: cached
     permissions:
       - permission: search_full_directory
-        role: ldap-search
+        role: !KeyOf role-ldap-search
 
   - model: authentik_core.application
     state: present
