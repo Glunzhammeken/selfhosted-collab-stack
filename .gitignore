@@ -22,3 +22,7 @@ __pycache__/
 
 # Miljøfiler med secrets: fang dem hvis de lander i projektmappen
 **/.env
+
+# Ansible Vault-krypterede variabler: ignorér den ukrypterede version
+# Commit kun efter: ansible-vault encrypt group_vars/all/vault.yml
+group_vars/all/vault.yml

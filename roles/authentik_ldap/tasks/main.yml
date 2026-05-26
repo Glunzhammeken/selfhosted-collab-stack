@@ -1,0 +1,485 @@
+---
+# ──────────────────────────────────────────────
+# LDAP-service adgangskode (genereres én gang)
+# ──────────────────────────────────────────────
+- name: Tjek om ldapservice-adgangskode allerede er genereret
+  ansible.builtin.stat:
+    path: "{{ authentik_dir }}/ldap_service_pass"
+  register: ldap_pass_stat
+
+- name: Generér ldapservice-adgangskode og gem den
+  ansible.builtin.shell:
+    cmd: "openssl rand -base64 32 | tr -d '\\n=/+' | head -c 32 > {{ authentik_dir }}/ldap_service_pass"
+  when: not ldap_pass_stat.stat.exists
+  no_log: true
+  changed_when: true
+
+- name: Sæt filrettigheder på adgangskode-filen
+  ansible.builtin.file:
+    path: "{{ authentik_dir }}/ldap_service_pass"
+    mode: "0600"
+    owner: root
+    group: root
+
+- name: Hent ldapservice-adgangskode
+  ansible.builtin.slurp:
+    src: "{{ authentik_dir }}/ldap_service_pass"
+  register: _ldap_pass_raw
+  no_log: true
+
+- name: Sæt ldapservice-adgangskode som fact
+  ansible.builtin.set_fact:
+    _ldap_svc_pass: "{{ _ldap_pass_raw.content | b64decode | trim }}"
+  no_log: true
+
+# ──────────────────────────────────────────────
+# Guard: API-token skal være i vault
+# ──────────────────────────────────────────────
+- name: Kontrollér at Authentik API-token er konfigureret
+  ansible.builtin.assert:
+    that: (authentik_api_token | default('')) | length > 0
+    fail_msg: |
+
+      ════════════════════════════════════════════════════════
+      authentik_api_token mangler i group_vars/all/vault.yml
+      ════════════════════════════════════════════════════════
+
+      Opret API-token i Authentik UI:
+        1. Gå til https://{{ authentik_domain }}/if/admin/#/core/tokens
+        2. Klik "Create"
+             Identifier : ansible-token
+             Intent     : API Token
+             User       : akadmin
+        3. Gem token-nøglen
+
+      Opret vault-filen på din lokale maskine:
+        ansible-vault create group_vars/all/vault.yml
+
+      Tilføj:
+        authentik_api_token: "<din-token>"
+
+      Kør derefter:
+        ansible-playbook site-ldap.yml --ask-vault-pass
+
+      ════════════════════════════════════════════════════════
+
+- name: Sæt fælles API-headers som fact
+  ansible.builtin.set_fact:
+    _ak: "{{ authentik_url }}/api/v3"
+    _ak_h:
+      Authorization: "Bearer {{ authentik_api_token }}"
+      Content-Type: application/json
+  no_log: true
+
+# ──────────────────────────────────────────────
+# LDAPSERVICE BRUGER
+# ──────────────────────────────────────────────
+- name: Tjek om ldapservice-bruger eksisterer
+  ansible.builtin.uri:
+    url: "{{ _ak }}/core/users/?username=ldapservice"
+    method: GET
+    headers: "{{ _ak_h }}"
+    validate_certs: true
+  register: _user_check
+
+- name: Opret ldapservice-bruger
+  ansible.builtin.uri:
+    url: "{{ _ak }}/core/users/"
+    method: POST
+    body_format: json
+    body:
+      username: ldapservice
+      name: "LDAP Service Account"
+      path: users
+      type: service_account
+      is_active: true
+    headers: "{{ _ak_h }}"
+    status_code: 201
+    validate_certs: true
+  register: _user_create
+  when: _user_check.json.pagination.count | int == 0
+
+- name: Sæt ldapservice bruger-pk som fact
+  ansible.builtin.set_fact:
+    _svc_pk: >-
+      {{ (_user_check.json.results[0].pk
+          if _user_check.json.pagination.count | int > 0
+          else _user_create.json.pk) | int }}
+
+- name: Sæt adgangskode for ldapservice (kun ved oprettelse)
+  ansible.builtin.uri:
+    url: "{{ _ak }}/core/users/{{ _svc_pk }}/set_password/"
+    method: POST
+    body_format: json
+    body:
+      password: "{{ _ldap_svc_pass }}"
+    headers: "{{ _ak_h }}"
+    status_code: 204
+    validate_certs: true
+  no_log: true
+  when: _user_check.json.pagination.count | int == 0
+
+# ──────────────────────────────────────────────
+# LDAP-SEARCH ROLLE
+# ──────────────────────────────────────────────
+- name: Tjek om ldap-search rolle eksisterer
+  ansible.builtin.uri:
+    url: "{{ _ak }}/rbac/roles/?name=ldap-search"
+    method: GET
+    headers: "{{ _ak_h }}"
+    validate_certs: true
+  register: _role_check
+
+- name: Opret ldap-search rolle
+  ansible.builtin.uri:
+    url: "{{ _ak }}/rbac/roles/"
+    method: POST
+    body_format: json
+    body:
+      name: ldap-search
+    headers: "{{ _ak_h }}"
+    status_code: 201
+    validate_certs: true
+  register: _role_create
+  when: _role_check.json.pagination.count | int == 0
+
+- name: Sæt ldap-search rolle-pk som fact
+  ansible.builtin.set_fact:
+    _role_pk: >-
+      {{ (_role_check.json.results[0].pk
+          if _role_check.json.pagination.count | int > 0
+          else _role_create.json.pk) }}
+
+# ──────────────────────────────────────────────
+# TILFØJ LDAPSERVICE TIL ROLLEN
+# ──────────────────────────────────────────────
+- name: Hent detaljer for ldap-search rollen
+  ansible.builtin.uri:
+    url: "{{ _ak }}/rbac/roles/{{ _role_pk }}/"
+    method: GET
+    headers: "{{ _ak_h }}"
+    validate_certs: true
+  register: _role_detail
+
+- name: Tilføj ldapservice til ldap-search rollen
+  ansible.builtin.uri:
+    url: "{{ _ak }}/rbac/roles/{{ _role_pk }}/"
+    method: PATCH
+    body_format: json
+    body:
+      users: "{{ (_role_detail.json.users | default([])) | union([_svc_pk | int]) }}"
+    headers: "{{ _ak_h }}"
+    status_code: 200
+    validate_certs: true
+  when: _svc_pk | int not in (_role_detail.json.users | default([]))
+
+# ──────────────────────────────────────────────
+# FLOWS (bruges til LDAP-provider)
+# ──────────────────────────────────────────────
+- name: Hent default-authentication-flow
+  ansible.builtin.uri:
+    url: "{{ _ak }}/flows/instances/?slug=default-authentication-flow"
+    method: GET
+    headers: "{{ _ak_h }}"
+    validate_certs: true
+  register: _auth_flow
+
+- name: Hent default-provider-invalidation-flow
+  ansible.builtin.uri:
+    url: "{{ _ak }}/flows/instances/?slug=default-provider-invalidation-flow"
+    method: GET
+    headers: "{{ _ak_h }}"
+    validate_certs: true
+  register: _invalidation_flow
+
+# ──────────────────────────────────────────────
+# LDAP PROVIDER
+# ──────────────────────────────────────────────
+- name: Tjek om LDAP-provider eksisterer
+  ansible.builtin.uri:
+    url: "{{ _ak }}/providers/ldap/?name=ldap-provider"
+    method: GET
+    headers: "{{ _ak_h }}"
+    validate_certs: true
+  register: _provider_check
+
+- name: Opret LDAP-provider
+  ansible.builtin.uri:
+    url: "{{ _ak }}/providers/ldap/"
+    method: POST
+    body_format: json
+    body:
+      name: ldap-provider
+      authorization_flow: "{{ _auth_flow.json.results[0].pk }}"
+      bind_flow: "{{ _auth_flow.json.results[0].pk }}"
+      unbind_flow: "{{ _invalidation_flow.json.results[0].pk }}"
+      base_dn: "{{ authentik_ldap_base_dn }}"
+      bind_mode: cached
+      search_mode: cached
+    headers: "{{ _ak_h }}"
+    status_code: 201
+    validate_certs: true
+  register: _provider_create
+  when: _provider_check.json.pagination.count | int == 0
+
+- name: Sæt LDAP-provider pk som fact
+  ansible.builtin.set_fact:
+    _provider_pk: >-
+      {{ (_provider_check.json.results[0].pk
+          if _provider_check.json.pagination.count | int > 0
+          else _provider_create.json.pk) | int }}
+
+# ──────────────────────────────────────────────
+# RBAC OBJECT PERMISSION (search_full_ldap_directory)
+# ──────────────────────────────────────────────
+- name: Tjek om search_full_ldap_directory er tildelt ldap-search rollen
+  ansible.builtin.uri:
+    url: "{{ _ak }}/rbac/permissions/assigned_by_roles/?role={{ _role_pk }}&model=authentik_providers_ldap.ldapprovider"
+    method: GET
+    headers: "{{ _ak_h }}"
+    validate_certs: true
+  register: _perm_check
+
+- name: Tildel search_full_ldap_directory til ldap-search rollen på provideren
+  ansible.builtin.uri:
+    url: "{{ _ak }}/rbac/permissions/assigned_by_roles/"
+    method: POST
+    body_format: json
+    body:
+      role: "{{ _role_pk }}"
+      object_pk: "{{ _provider_pk | string }}"
+      permissions:
+        - search_full_ldap_directory
+      model: "authentik_providers_ldap.ldapprovider"
+    headers: "{{ _ak_h }}"
+    status_code: [200, 201]
+    validate_certs: true
+  when: >-
+    _perm_check.json.results | default([])
+    | selectattr('permissions', 'search', 'search_full_ldap_directory')
+    | list | length == 0
+
+# ──────────────────────────────────────────────
+# LDAP APPLIKATION
+# ──────────────────────────────────────────────
+- name: Tjek om LDAP-applikation eksisterer
+  ansible.builtin.uri:
+    url: "{{ _ak }}/core/applications/?slug=ldap"
+    method: GET
+    headers: "{{ _ak_h }}"
+    validate_certs: true
+  register: _app_check
+
+- name: Opret LDAP-applikation
+  ansible.builtin.uri:
+    url: "{{ _ak }}/core/applications/"
+    method: POST
+    body_format: json
+    body:
+      name: LDAP
+      slug: ldap
+      provider: "{{ _provider_pk }}"
+      policy_engine_mode: any
+    headers: "{{ _ak_h }}"
+    status_code: 201
+    validate_certs: true
+  when: _app_check.json.pagination.count | int == 0
+
+# ──────────────────────────────────────────────
+# DOCKER SERVICE CONNECTION
+# ──────────────────────────────────────────────
+- name: Tjek om docker-socket-proxy service connection eksisterer
+  ansible.builtin.uri:
+    url: "{{ _ak }}/outposts/service-connections/all/?name=docker-socket-proxy"
+    method: GET
+    headers: "{{ _ak_h }}"
+    validate_certs: true
+  register: _svcconn_check
+
+- name: Opret docker-socket-proxy service connection
+  ansible.builtin.uri:
+    url: "{{ _ak }}/outposts/service-connections/docker/"
+    method: POST
+    body_format: json
+    body:
+      name: docker-socket-proxy
+      local: false
+      url: "http://authentik-socket-proxy:2375"
+    headers: "{{ _ak_h }}"
+    status_code: 201
+    validate_certs: true
+  register: _svcconn_create
+  when: _svcconn_check.json.pagination.count | int == 0
+
+- name: Sæt service connection pk som fact
+  ansible.builtin.set_fact:
+    _svcconn_pk: >-
+      {{ (_svcconn_check.json.results[0].pk
+          if _svcconn_check.json.pagination.count | int > 0
+          else _svcconn_create.json.pk) }}
+
+# ──────────────────────────────────────────────
+# LDAP OUTPOST
+# ──────────────────────────────────────────────
+- name: Tjek om LDAP-outpost eksisterer
+  ansible.builtin.uri:
+    url: "{{ _ak }}/outposts/instances/?name={{ authentik_outpost_name }}"
+    method: GET
+    headers: "{{ _ak_h }}"
+    validate_certs: true
+  register: _outpost_check
+
+- name: Opret LDAP-outpost
+  ansible.builtin.uri:
+    url: "{{ _ak }}/outposts/instances/"
+    method: POST
+    body_format: json
+    body:
+      name: "{{ authentik_outpost_name }}"
+      type: ldap
+      service_connection: "{{ _svcconn_pk }}"
+      providers:
+        - "{{ _provider_pk }}"
+      config:
+        docker_network: proxy-net
+        authentik_host: "{{ authentik_url }}"
+        authentik_host_insecure: false
+        docker_map_ports: false
+    headers: "{{ _ak_h }}"
+    status_code: 201
+    validate_certs: true
+  when: _outpost_check.json.pagination.count | int == 0
+
+- name: Opdatér outpost-netværkskonfiguration til proxy-net (idempotent)
+  ansible.builtin.uri:
+    url: "{{ _ak }}/outposts/instances/{{ _outpost_check.json.results[0].pk }}/"
+    method: PATCH
+    body_format: json
+    body:
+      config:
+        docker_network: proxy-net
+        authentik_host: "{{ authentik_url }}"
+        authentik_host_insecure: false
+        docker_map_ports: false
+    headers: "{{ _ak_h }}"
+    status_code: 200
+    validate_certs: true
+  when: _outpost_check.json.pagination.count | int > 0
+
+# ──────────────────────────────────────────────
+# TESTBRUGERE
+# ──────────────────────────────────────────────
+- name: Tjek om testuser1 eksisterer
+  ansible.builtin.uri:
+    url: "{{ _ak }}/core/users/?username=testuser1"
+    method: GET
+    headers: "{{ _ak_h }}"
+    validate_certs: true
+  register: _tu1_check
+
+- name: Opret testuser1
+  ansible.builtin.uri:
+    url: "{{ _ak }}/core/users/"
+    method: POST
+    body_format: json
+    body:
+      username: testuser1
+      name: "Test Bruger 1"
+      email: "testuser1@{{ nginx_domain }}"
+      path: users
+      is_active: true
+    headers: "{{ _ak_h }}"
+    status_code: 201
+    validate_certs: true
+  when: _tu1_check.json.pagination.count | int == 0
+
+- name: Tjek om testuser2 eksisterer
+  ansible.builtin.uri:
+    url: "{{ _ak }}/core/users/?username=testuser2"
+    method: GET
+    headers: "{{ _ak_h }}"
+    validate_certs: true
+  register: _tu2_check
+
+- name: Opret testuser2
+  ansible.builtin.uri:
+    url: "{{ _ak }}/core/users/"
+    method: POST
+    body_format: json
+    body:
+      username: testuser2
+      name: "Test Bruger 2"
+      email: "testuser2@{{ nginx_domain }}"
+      path: users
+      is_active: true
+    headers: "{{ _ak_h }}"
+    status_code: 201
+    validate_certs: true
+  when: _tu2_check.json.pagination.count | int == 0
+
+# ──────────────────────────────────────────────
+# VENT PÅ OUTPOST-CONTAINER
+# ──────────────────────────────────────────────
+- name: Vent på at Authentik worker starter outpost-containeren (op til 5 minutter)
+  ansible.builtin.command:
+    cmd: "docker ps --filter name={{ authentik_outpost_container }} --filter status=running"
+  register: _outpost_ps
+  until: authentik_outpost_container in _outpost_ps.stdout
+  retries: 30
+  delay: 10
+  changed_when: false
+
+# ──────────────────────────────────────────────
+# PROXY-NET VERIFICERING OG TILKNYTNING
+# ──────────────────────────────────────────────
+- name: Tjek hvilke netværk outpost-containeren er på
+  ansible.builtin.command:
+    cmd: "docker inspect {{ authentik_outpost_container }}"
+  register: _outpost_inspect
+  changed_when: false
+
+- name: Tilknyt outpost-containeren til proxy-net (hvis ikke allerede tilknyttet)
+  ansible.builtin.command:
+    cmd: "docker network connect proxy-net {{ authentik_outpost_container }}"
+  when: "'proxy-net' not in _outpost_inspect.stdout"
+  changed_when: true
+
+# ──────────────────────────────────────────────
+# LDAP VERIFICERING
+# ──────────────────────────────────────────────
+- name: Verificér LDAP-bind og full directory search
+  ansible.builtin.shell:
+    cmd: |
+      docker run --rm --network proxy-net alpine sh -c \
+        "apk add openldap-clients > /dev/null 2>&1 && \
+         ldapsearch -x \
+           -H ldap://{{ authentik_outpost_container }}:{{ authentik_ldap_port }} \
+           -D 'cn=ldapservice,ou=users,{{ authentik_ldap_base_dn }}' \
+           -w '{{ _ldap_svc_pass }}' \
+           -b '{{ authentik_ldap_base_dn }}' \
+           '(objectClass=user)' cn"
+  register: _ldap_result
+  no_log: true
+  changed_when: false
+  retries: 6
+  delay: 10
+  until: _ldap_result.rc == 0
+
+- name: Bekræft at ldapsearch returnerede mindst 3 brugere (akadmin + ldapservice + 1 testbruger)
+  ansible.builtin.assert:
+    that: _ldap_result.stdout_lines | select('match', '^cn:') | list | length >= 3
+    fail_msg: >
+      LDAP-search returnerede for få brugere.
+      Tjek at search_full_ldap_directory-permissionen er tildelt ldap-search rollen
+      via providerens Permissions-fane i Authentik UI.
+    success_msg: "LDAP-outpost kørende — full directory search virker."
+
+- name: Vis fundne LDAP-brugere
+  ansible.builtin.debug:
+    msg: "{{ _ldap_result.stdout_lines | select('match', '^(dn|cn):') | list }}"
+
+- name: Vis ldapservice-adgangskode (til brug i Mailcow og Nextcloud)
+  ansible.builtin.debug:
+    msg: >
+      ldapservice-adgangskode er gemt i {{ authentik_dir }}/ldap_service_pass
+      på serveren. Brug denne i Mailcow og Nextcloud LDAP-konfiguration.
