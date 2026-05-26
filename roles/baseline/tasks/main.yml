@@ -78,3 +78,35 @@
     name: fail2ban
     state: started
     enabled: true
+- name: Hent faktisk SSH-konfiguration (sandheden fra sshd selv)
+  ansible.builtin.command: sshd -T
+  register: sshd_effective_config
+  changed_when: false
+
+- name: Bekræft at password-login og keyboard-interactive er slået fra
+  ansible.builtin.assert:
+    that:
+      - "'passwordauthentication no' in sshd_effective_config.stdout"
+      - "'kbdinteractiveauthentication no' in sshd_effective_config.stdout"
+    success_msg: "SSH er hærdet: password- og keyboard-interactive-login er deaktiveret."
+    fail_msg: "ADVARSEL: sshd tillader stadig password-login. Hærdningen virkede ikke."
+
+- name: Hent UFW-status
+  ansible.builtin.command: ufw status verbose
+  register: ufw_status_check
+  changed_when: false
+
+- name: Bekræft at UFW er aktiv
+  ansible.builtin.assert:
+    that:
+      - "'Status: active' in ufw_status_check.stdout"
+    success_msg: "UFW er aktiv."
+    fail_msg: "ADVARSEL: UFW er ikke aktiv."
+
+- name: Bekræft at fail2ban-servicen kører
+  ansible.builtin.systemd_service:
+    name: fail2ban
+    state: started
+  register: fail2ban_running
+  check_mode: true
+  changed_when: false
