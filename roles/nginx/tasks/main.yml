@@ -106,11 +106,14 @@
   when: not cert_stat.stat.exists
   changed_when: true
 
-# Dry-run test (skal køre FØR certbot-containeren startes, ellers blokerer dens lock-fil)
+# Dry-run test køres kun ved første certifikatudstedelse, mens certbot-containeren endnu
+# ikke kører. På efterfølgende kørsler er certs allerede til stede og containeren kører,
+# så vi undgår lock-konflikten.
 - name: Test certifikatfornyelse med dry-run
   ansible.builtin.command:
     cmd: docker compose run --rm --entrypoint certbot certbot renew --dry-run
     chdir: "{{ nginx_proxy_dir }}"
+  when: not cert_stat.stat.exists
   changed_when: false
 
 # Start Certbot til automatisk fornyelse
