@@ -40,7 +40,12 @@ server {
     proxy_connect_timeout 3610s;
 
     location / {
-        proxy_pass http://nextcloud-aio-apache:11000;
+        # Resolver nødvendig når upstream ikke eksisterer ved nginx-opstart
+        # (nextcloud-aio-apache oprettes først under AIO initial-setup).
+        # 127.0.0.11 er Dockers interne DNS der resolver container-navne.
+        resolver 127.0.0.11 valid=30s;
+        set $nextcloud_upstream http://nextcloud-aio-apache:11000;
+        proxy_pass $nextcloud_upstream;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
