@@ -77,3 +77,8 @@
       - "'passwordauthentication no' in sshd_effective_config.stdout"
     success_msg: "SSH er stadig hærdet: password-login er deaktiveret."
     fail_msg: "ADVARSEL: password-login er aktivt igen. Kør baseline-rollen."
+- name: Verificér unattended-upgrades-konfiguration med dry-run
+  ansible.builtin.command: unattended-upgrade --dry-run
+  register: uu_dryrun
+  changed_when: false
+  failed_when: uu_dryrun.rc != 0
