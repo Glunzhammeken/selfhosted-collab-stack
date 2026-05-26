@@ -183,7 +183,7 @@
       - "'nginx-mailcow' in mailcow_ps.stdout"
       - "'postfix-mailcow' in mailcow_ps.stdout"
       - "'dovecot-mailcow' in mailcow_ps.stdout"
-      - "'mariadb-mailcow' in mailcow_ps.stdout"
+      - "'mysql-mailcow' in mailcow_ps.stdout"
     success_msg: "Mailcow-kernekontainere (nginx, postfix, dovecot, mariadb) kører."
     fail_msg: "ADVARSEL: En eller flere Mailcow-containere mangler. Tjek docker compose ps."
 
