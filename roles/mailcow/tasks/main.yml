@@ -1,0 +1,195 @@
+---
+# Mail-porte i UFW
+- name: Åbn mail-porte i UFW
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: tcp
+  loop:
+    - { port: "25" }
+    - { port: "465" }
+    - { port: "587" }
+    - { port: "143" }
+    - { port: "993" }
+    - { port: "4190" }
+
+# Forudsætninger
+- name: Installér git og jq
+  ansible.builtin.apt:
+    name:
+      - git
+      - jq
+    state: present
+
+# Klon Mailcow-repo
+- name: Tjek om Mailcow-repo allerede er klonet
+  ansible.builtin.stat:
+    path: "{{ mailcow_dir }}/.git"
+  register: mailcow_git_stat
+
+- name: Klon Mailcow-repo
+  ansible.builtin.git:
+    repo: https://github.com/mailcow/mailcow-dockerized.git
+    dest: "{{ mailcow_dir }}"
+    version: master
+    depth: 1
+  when: not mailcow_git_stat.stat.exists
+
+# mailcow.conf
+- name: Tjek om mailcow.conf allerede eksisterer
+  ansible.builtin.stat:
+    path: "{{ mailcow_dir }}/mailcow.conf"
+  register: mailcow_conf_stat
+
+- name: Generér mailcow.conf via generate_config.sh (kun første gang)
+  ansible.builtin.shell:
+    cmd: printf '%s\n%s\n\n\n' '{{ mailcow_hostname }}' '{{ mailcow_timezone }}' | bash generate_config.sh
+    chdir: "{{ mailcow_dir }}"
+  when: not mailcow_conf_stat.stat.exists
+  changed_when: true
+
+- name: Bind HTTP kun til localhost
+  ansible.builtin.lineinfile:
+    path: "{{ mailcow_dir }}/mailcow.conf"
+    regexp: '^HTTP_PORT='
+    line: "HTTP_PORT={{ mailcow_http_port }}"
+
+- name: Sæt HTTP_BIND til localhost
+  ansible.builtin.lineinfile:
+    path: "{{ mailcow_dir }}/mailcow.conf"
+    regexp: '^HTTP_BIND='
+    line: "HTTP_BIND=127.0.0.1"
+
+- name: Sæt HTTPS_PORT
+  ansible.builtin.lineinfile:
+    path: "{{ mailcow_dir }}/mailcow.conf"
+    regexp: '^HTTPS_PORT='
+    line: "HTTPS_PORT={{ mailcow_https_port }}"
+
+- name: Bind HTTPS kun til localhost
+  ansible.builtin.lineinfile:
+    path: "{{ mailcow_dir }}/mailcow.conf"
+    regexp: '^HTTPS_BIND='
+    line: "HTTPS_BIND=127.0.0.1"
+
+- name: Deaktivér Mailcows egen Let's Encrypt-håndtering
+  ansible.builtin.lineinfile:
+    path: "{{ mailcow_dir }}/mailcow.conf"
+    regexp: '^SKIP_LETS_ENCRYPT='
+    line: "SKIP_LETS_ENCRYPT=y"
+
+- name: Deaktivér IP-check (server bag reverse proxy)
+  ansible.builtin.lineinfile:
+    path: "{{ mailcow_dir }}/mailcow.conf"
+    regexp: '^SKIP_IP_CHECK='
+    line: "SKIP_IP_CHECK=y"
+
+- name: Tilføj autodiscover og autoconfig som ekstra servernavne
+  ansible.builtin.lineinfile:
+    path: "{{ mailcow_dir }}/mailcow.conf"
+    regexp: '^ADDITIONAL_SERVER_NAMES='
+    line: "ADDITIONAL_SERVER_NAMES={{ mailcow_additional_server_names }}"
+
+# Override
+- name: Læg docker-compose.override.yml ud fra skabelon
+  ansible.builtin.template:
+    src: docker-compose.override.yml.j2
+    dest: "{{ mailcow_dir }}/docker-compose.override.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+# Start stakken
+- name: Tjek om Mailcow allerede kører
+  ansible.builtin.command:
+    cmd: docker compose ps --quiet nginx-mailcow
+    chdir: "{{ mailcow_dir }}"
+  register: mailcow_running
+  changed_when: false
+  failed_when: false
+
+- name: Træk Docker-images (kun ved første opstart)
+  ansible.builtin.command:
+    cmd: docker compose pull
+    chdir: "{{ mailcow_dir }}"
+  when: mailcow_running.stdout == ''
+  changed_when: true
+
+- name: Start Mailcow-stakken
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ mailcow_dir }}"
+  changed_when: false
+
+- name: Vent på at Mailcow nginx er klar (op til 5 minutter)
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ mailcow_http_port }}"
+    timeout: 300
+    delay: 15
+
+# Nginx vhost
+- name: Læg Nginx vhost for Mailcow ud
+  ansible.builtin.template:
+    src: mail.conf.j2
+    dest: "{{ nginx_proxy_dir }}/conf.d/mail.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  register: mail_vhost
+
+# Bootstrap-konfiguration opdateres: auth og mail har nu egne vhosts,
+# kun cloud mangler stadig og skal bruge bootstrap til Nextcloud er deployet.
+- name: Opdater 00-bootstrap.conf til kun cloud-subdomain
+  ansible.builtin.copy:
+    content: |
+      server {
+          listen 80;
+          server_name cloud.{{ nginx_domain }};
+
+          location /.well-known/acme-challenge/ {
+              root /var/www/certbot;
+          }
+
+          location / {
+              return 200 'Bootstrap mode';
+              add_header Content-Type text/plain;
+          }
+      }
+    dest: "{{ nginx_proxy_dir }}/conf.d/00-bootstrap.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  register: bootstrap_update
+
+- name: Genindlæs Nginx efter vhost-ændringer
+  ansible.builtin.command:
+    cmd: docker compose exec nginx nginx -s reload
+    chdir: "{{ nginx_proxy_dir }}"
+  when: mail_vhost.changed or bootstrap_update.changed
+  changed_when: true
+
+# Verifikation
+- name: Hent status på Mailcow-containere
+  ansible.builtin.command:
+    cmd: docker compose ps
+    chdir: "{{ mailcow_dir }}"
+  register: mailcow_ps
+  changed_when: false
+
+- name: Bekræft at Mailcow-kernekontainere kører
+  ansible.builtin.assert:
+    that:
+      - "'nginx-mailcow' in mailcow_ps.stdout"
+      - "'postfix-mailcow' in mailcow_ps.stdout"
+      - "'dovecot-mailcow' in mailcow_ps.stdout"
+      - "'mariadb-mailcow' in mailcow_ps.stdout"
+    success_msg: "Mailcow-kernekontainere (nginx, postfix, dovecot, mariadb) kører."
+    fail_msg: "ADVARSEL: En eller flere Mailcow-containere mangler. Tjek docker compose ps."
+
+- name: Verificér at Mailcow webinterface er tilgængeligt via HTTPS
+  ansible.builtin.uri:
+    url: "https://{{ mailcow_hostname }}"
+    status_code: [200, 302]
+    validate_certs: true
+  changed_when: false

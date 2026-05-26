@@ -1,0 +1,61 @@
+server {
+    listen 80;
+    server_name mail.{{ nginx_domain }} autodiscover.{{ nginx_domain }} autoconfig.{{ nginx_domain }};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name mail.{{ nginx_domain }} autodiscover.{{ nginx_domain }} autoconfig.{{ nginx_domain }};
+
+    ssl_certificate /etc/letsencrypt/live/{{ mailcow_ssl_cert_dir }}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{{ mailcow_ssl_cert_dir }}/privkey.pem;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    client_max_body_size 0;
+
+    location /Microsoft-Server-ActiveSync {
+        proxy_pass https://{{ mailcow_container_name }}:{{ mailcow_https_port }}/Microsoft-Server-ActiveSync;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_connect_timeout 75;
+        proxy_send_timeout 3650;
+        proxy_read_timeout 3650;
+        proxy_buffers 64 512k;
+        client_body_buffer_size 512k;
+        client_max_body_size 0;
+        proxy_ssl_verify off;
+    }
+
+    location / {
+        proxy_pass https://{{ mailcow_container_name }}:{{ mailcow_https_port }};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_buffer_size 128k;
+        proxy_buffers 64 512k;
+        proxy_busy_buffers_size 512k;
+        proxy_ssl_verify off;
+    }
+}

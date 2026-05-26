@@ -1,0 +1,21 @@
+services:
+  nginx-mailcow:
+    container_name: mailcow-nginx
+    networks:
+      - mailcow-network
+      - proxy-net
+
+  postfix-mailcow:
+    volumes:
+      - /opt/nginx-proxy/certbot/conf/live/{{ mailcow_ssl_cert_dir }}/fullchain.pem:/opt/postfix/conf/ssl/cert.pem:ro
+      - /opt/nginx-proxy/certbot/conf/live/{{ mailcow_ssl_cert_dir }}/privkey.pem:/opt/postfix/conf/ssl/key.pem:ro
+
+  dovecot-mailcow:
+    volumes:
+      - /opt/nginx-proxy/certbot/conf/live/{{ mailcow_ssl_cert_dir }}/fullchain.pem:/opt/dovecot/ssl/cert.pem:ro
+      - /opt/nginx-proxy/certbot/conf/live/{{ mailcow_ssl_cert_dir }}/privkey.pem:/opt/dovecot/ssl/key.pem:ro
+
+networks:
+  proxy-net:
+    external: true
+    name: proxy-net
