@@ -1,7 +1,9 @@
 ---
 # Bilag H: Authentik LDAP-outpost
 # Kørsel: ansible-playbook site-ldap.yml
-# Første gang: playbooken pauser og guider dig til at gemme API-token på serveren
+#
+# Forudsætning: site-apps.yml skal være kørt først, så authentik-stakken
+# er oppe med blueprints-mappen mountet i worker-containeren.
 - name: Konfigurér Authentik LDAP-outpost
   hosts: server
   become: true
