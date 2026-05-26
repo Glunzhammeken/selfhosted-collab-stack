@@ -1,7 +1,7 @@
 ---
 # Bilag H: Authentik LDAP-outpost
-# Kræver: authentik_api_token i group_vars/all/vault.yml (ansible-vault)
-# Kørsel: ansible-playbook site-ldap.yml --ask-vault-pass
+# Kørsel: ansible-playbook site-ldap.yml
+# Første gang: playbooken pauser og guider dig til at gemme API-token på serveren
 - name: Konfigurér Authentik LDAP-outpost
   hosts: server
   become: true

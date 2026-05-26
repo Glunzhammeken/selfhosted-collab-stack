@@ -33,35 +33,44 @@
   no_log: true
 
 # ──────────────────────────────────────────────
-# Guard: API-token skal være i vault
+# API-token (gemmes i fil på serveren)
 # ──────────────────────────────────────────────
-- name: Kontrollér at Authentik API-token er konfigureret
-  ansible.builtin.assert:
-    that: (authentik_api_token | default('')) | length > 0
-    fail_msg: |
+- name: Tjek om Authentik API-token allerede er gemt
+  ansible.builtin.stat:
+    path: "{{ authentik_dir }}/api_token"
+  register: _api_token_stat
+
+- name: Vent på at API-token oprettes manuelt
+  ansible.builtin.pause:
+    prompt: |
 
       ════════════════════════════════════════════════════════
-      authentik_api_token mangler i group_vars/all/vault.yml
+      MANUEL HANDLING PÅKRÆVET — tryk Enter når du er færdig
       ════════════════════════════════════════════════════════
 
-      Opret API-token i Authentik UI:
-        1. Gå til https://{{ authentik_domain }}/if/admin/#/core/tokens
-        2. Klik "Create"
+      1. Gå til https://{{ authentik_domain }}/if/admin/#/core/tokens
+      2. Klik "Create":
              Identifier : ansible-token
              Intent     : API Token
              User       : akadmin
-        3. Gem token-nøglen
-
-      Opret vault-filen på din lokale maskine:
-        ansible-vault create group_vars/all/vault.yml
-
-      Tilføj:
-        authentik_api_token: "<din-token>"
-
-      Kør derefter:
-        ansible-playbook site-ldap.yml --ask-vault-pass
+      3. Kopiér token-nøglen
+      4. Kør på serveren:
+             echo 'DIN_TOKEN' > {{ authentik_dir }}/api_token
+             chmod 600 {{ authentik_dir }}/api_token
 
       ════════════════════════════════════════════════════════
+  when: not _api_token_stat.stat.exists
+
+- name: Hent Authentik API-token fra fil
+  ansible.builtin.slurp:
+    src: "{{ authentik_dir }}/api_token"
+  register: _api_token_raw
+  no_log: true
+
+- name: Sæt API-token som fact
+  ansible.builtin.set_fact:
+    authentik_api_token: "{{ _api_token_raw.content | b64decode | trim }}"
+  no_log: true
 
 - name: Sæt fælles API-headers som fact
   ansible.builtin.set_fact:
