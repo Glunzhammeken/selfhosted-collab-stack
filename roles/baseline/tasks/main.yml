@@ -51,6 +51,7 @@
     owner: root
     group: root
     mode: "0644"
+  notify: Genstart SSH
 
 - name: Stop ssh.socket så socket activation ikke overstyrer (Ubuntu 24.04)
   ansible.builtin.systemd_service:
@@ -58,11 +59,14 @@
     state: stopped
     enabled: false
 
-- name: Aktivér og genstart ssh.service rent (porten er fri, /run/sshd findes)
+- name: Sørg for at ssh.service kører og starter ved boot
   ansible.builtin.systemd_service:
     name: ssh.service
-    state: restarted
+    state: started
     enabled: true
+
+- name: Aktivér SSH-ændringer nu før verifikation
+  ansible.builtin.meta: flush_handlers
 
 - name: Læg fail2ban jail.local ud fra skabelon
   ansible.builtin.template:
@@ -78,6 +82,7 @@
     name: fail2ban
     state: started
     enabled: true
+
 - name: Hent faktisk SSH-konfiguration (sandheden fra sshd selv)
   ansible.builtin.command: sshd -T
   register: sshd_effective_config
