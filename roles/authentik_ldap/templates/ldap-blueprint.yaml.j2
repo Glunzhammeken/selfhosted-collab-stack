@@ -4,13 +4,18 @@ metadata:
   labels:
     blueprints.goauthentik.io/description: "LDAP provider, outpost og service account"
 entries:
-  # Role skal oprettes FØR brugeren, så !KeyOf kan opløses
+  # Role skal oprettes FØR brugeren, så !KeyOf kan opløses.
+  # search_full_directory tildeles globalt på rollen (per-entry permissions:
+  # på provideren fejlede med "For global permissions" — importeren scoper
+  # ikke til instans). Vi har kun én LDAP-provider, så global ≡ object her.
   - model: authentik_rbac.role
     state: present
     id: role-ldap-search
     identifiers:
       name: ldap-search
-    attrs: {}
+    attrs:
+      permissions:
+        - authentik_providers_ldap.search_full_directory
 
   # service_account — kun oprettet én gang; adgangskode læses fra env-variabel
   - model: authentik_core.user
@@ -26,8 +31,6 @@ entries:
       roles:
         - !KeyOf role-ldap-search
 
-  # LDAP provider: search_full_directory tildeles direkte på entry'en via permissions:
-  # (svarer til guidens trin 6 — "Assign Object Permissions" på providerens RBAC-fane)
   - model: authentik_providers_ldap.ldapprovider
     state: present
     id: ldap-provider
@@ -40,9 +43,6 @@ entries:
       base_dn: "{{ authentik_ldap_base_dn }}"
       bind_mode: cached
       search_mode: cached
-    permissions:
-      - permission: search_full_directory
-        role: !KeyOf role-ldap-search
 
   - model: authentik_core.application
     state: present
