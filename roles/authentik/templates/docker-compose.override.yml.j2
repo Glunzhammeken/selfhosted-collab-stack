@@ -1,0 +1,37 @@
+services:
+  docker-socket-proxy:
+    image: lscr.io/linuxserver/socket-proxy:latest
+    container_name: authentik-socket-proxy
+    restart: unless-stopped
+    environment:
+      - CONTAINERS=1
+      - IMAGES=1
+      - NETWORKS=1
+      - VOLUMES=1
+      - SERVICES=1
+      - TASKS=1
+      - POST=1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - default
+
+  worker:
+    volumes: !override
+      - ./media:/media
+      - ./certs:/certs
+      - ./custom-templates:/templates
+    environment:
+      AUTHENTIK_OUTPOSTS__CONTAINER_IMAGE_BASE: ghcr.io/goauthentik/%(type)s:%(version)s
+      AUTHENTIK_OUTPOSTS__DOCKER_IMAGE_BASE: ghcr.io/goauthentik/%(type)s:%(version)s
+      AUTHENTIK_DOCKER__SOCKET: tcp://docker-socket-proxy:2375
+
+  server:
+    networks:
+      - default
+      - proxy-net
+
+networks:
+  proxy-net:
+    external: true
+    name: proxy-net

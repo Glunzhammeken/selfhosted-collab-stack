@@ -1,0 +1,151 @@
+---
+# Mappestruktur
+- name: Opret Authentik-mappe og undermapper
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ authentik_dir }}"
+    - "{{ authentik_dir }}/media"
+    - "{{ authentik_dir }}/certs"
+    - "{{ authentik_dir }}/custom-templates"
+
+# docker-compose.yml fra Authentik
+- name: Tjek om Authentiks docker-compose.yml allerede er hentet
+  ansible.builtin.stat:
+    path: "{{ authentik_dir }}/docker-compose.yml"
+  register: authentik_compose_stat
+
+- name: Hent Authentiks officielle docker-compose.yml
+  ansible.builtin.get_url:
+    url: https://docs.goauthentik.io/compose.yml
+    dest: "{{ authentik_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  when: not authentik_compose_stat.stat.exists
+
+# .env med secrets
+- name: Tjek om .env allerede eksisterer
+  ansible.builtin.stat:
+    path: "{{ authentik_dir }}/.env"
+  register: authentik_env_stat
+
+- name: Generér PostgreSQL-adgangskode
+  ansible.builtin.command: openssl rand -hex 32
+  register: pg_pass_result
+  when: not authentik_env_stat.stat.exists
+  changed_when: false
+  no_log: true
+
+- name: Generér Authentik secret key
+  ansible.builtin.command: openssl rand -hex 50
+  register: secret_key_result
+  when: not authentik_env_stat.stat.exists
+  changed_when: false
+  no_log: true
+
+- name: Opret .env med genererede secrets (kun første gang)
+  ansible.builtin.copy:
+    content: |
+      PG_PASS={{ pg_pass_result.stdout }}
+      AUTHENTIK_SECRET_KEY={{ secret_key_result.stdout }}
+      AUTHENTIK_ERROR_REPORTING__ENABLED=false
+      AUTHENTIK_DISABLE_STARTUP_ANALYTICS=true
+      AUTHENTIK_AVATARS=none
+      AUTHENTIK_COOKIE_DOMAIN=.{{ nginx_domain }}
+      COMPOSE_PORT_HTTP=127.0.0.1:9000
+      COMPOSE_PORT_HTTPS=127.0.0.1:9443
+    dest: "{{ authentik_dir }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  when: not authentik_env_stat.stat.exists
+  no_log: true
+
+# Override
+- name: Læg docker-compose.override.yml ud fra skabelon
+  ansible.builtin.template:
+    src: docker-compose.override.yml.j2
+    dest: "{{ authentik_dir }}/docker-compose.override.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+# Start stakken
+- name: Tjek om Authentik-server allerede kører
+  ansible.builtin.command:
+    cmd: docker compose ps --quiet server
+    chdir: "{{ authentik_dir }}"
+  register: authentik_running
+  changed_when: false
+  failed_when: false
+
+- name: Træk Docker-images (kun ved første opstart)
+  ansible.builtin.command:
+    cmd: docker compose pull
+    chdir: "{{ authentik_dir }}"
+  when: authentik_running.stdout == ''
+  changed_when: true
+
+- name: Start Authentik-stakken
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ authentik_dir }}"
+  changed_when: false
+
+- name: Vent på at Authentik server er klar (op til 5 minutter)
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:9000/-/health/live/"
+    status_code: 200
+  register: authentik_health
+  retries: 30
+  delay: 10
+  until: authentik_health.status == 200
+  changed_when: false
+
+# Nginx vhost
+- name: Læg Nginx vhost for Authentik ud
+  ansible.builtin.template:
+    src: auth.conf.j2
+    dest: "{{ nginx_proxy_dir }}/conf.d/auth.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  register: auth_vhost
+
+- name: Genindlæs Nginx efter vhost-ændring
+  ansible.builtin.command:
+    cmd: docker compose exec nginx nginx -s reload
+    chdir: "{{ nginx_proxy_dir }}"
+  when: auth_vhost.changed
+  changed_when: true
+
+# Verifikation
+- name: Hent status på Authentik-containere
+  ansible.builtin.command:
+    cmd: docker compose ps
+    chdir: "{{ authentik_dir }}"
+  register: authentik_ps
+  changed_when: false
+
+- name: Bekræft at alle Authentik-containere kører
+  ansible.builtin.assert:
+    that:
+      - "'server' in authentik_ps.stdout"
+      - "'worker' in authentik_ps.stdout"
+      - "'postgresql' in authentik_ps.stdout"
+      - "'redis' in authentik_ps.stdout"
+      - "'socket-proxy' in authentik_ps.stdout"
+    success_msg: "Alle Authentik-containere kører."
+    fail_msg: "ADVARSEL: En eller flere Authentik-containere mangler. Tjek docker compose ps."
+
+- name: Verificér at Authentik er tilgængeligt via HTTPS
+  ansible.builtin.uri:
+    url: "https://{{ authentik_domain }}"
+    status_code: [200, 302]
+    validate_certs: true
+  changed_when: false

@@ -5,4 +5,5 @@
 - name: Deploy applikationer
   hosts: server
   become: true
-  roles: []
+  roles:
+    - authentik

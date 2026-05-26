@@ -19,3 +19,6 @@ __pycache__/
 # Editor-filer
 .vscode/
 *.swp
+
+# Miljøfiler med secrets: fang dem hvis de lander i projektmappen
+**/.env
