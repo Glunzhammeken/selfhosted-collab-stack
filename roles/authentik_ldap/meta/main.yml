@@ -1,0 +1,6 @@
+---
+# authentik_ldap afhænger af authentik-rollen, fordi blueprint-anvendelsen
+# kræver at blueprints-mappen er mountet i worker-containeren via
+# docker-compose.override.yml — som ejes af authentik-rollen.
+dependencies:
+  - role: authentik
