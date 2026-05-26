@@ -6,9 +6,11 @@
       - fail2ban
     state: present
     update_cache: true
+
 - name: Opgradér alle pakker
   ansible.builtin.apt:
     upgrade: dist
+
 - name: Check om reboot er nødvendigt
   ansible.builtin.stat:
     path: /var/run/reboot-required
@@ -23,14 +25,25 @@
       'ansible-playbook site.yml' forfra. Anden gang er der ingen
       kerneopdatering, så denne task springes over og playbooken fortsætter.
   when: reboot_required_file.stat.exists
-- name : Tillad SSH port 22
+
+- name: Tillad SSH port 22
   community.general.ufw:
     rule: allow
     port: "22"
     proto: tcp
+
 - name: Aktivér UFW
   community.general.ufw:
     state: enabled
+
+- name: Sørg for at runtime-mappen til sshd findes
+  ansible.builtin.file:
+    path: /run/sshd
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Deaktivér password login
   ansible.builtin.copy:
     content: "PasswordAuthentication no\n"
@@ -38,21 +51,30 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Genstart SSH
 
-- name: Deaktivér ssh.socket (Ubuntu 24.04 socket activation overstyrer ellers config)
+- name: Stop ssh.socket så socket activation ikke overstyrer (Ubuntu 24.04)
   ansible.builtin.systemd_service:
     name: ssh.socket
     state: stopped
     enabled: false
-  notify: Genstart SSH
 
-- name: Aktivér ssh.service eksplicit
+- name: Aktivér og genstart ssh.service rent (porten er fri, /run/sshd findes)
   ansible.builtin.systemd_service:
     name: ssh.service
+    state: restarted
     enabled: true
-  notify: Genstart SSH
 
-- name: Aktivér SSH-ændringer nu (flush handlers før vi går videre)
-  ansible.builtin.meta: flush_handlers
-  
+- name: Læg fail2ban jail.local ud fra skabelon
+  ansible.builtin.template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Genstart fail2ban
+
+- name: Sørg for at fail2ban er startet og aktiveret ved boot
+  ansible.builtin.systemd_service:
+    name: fail2ban
+    state: started
+    enabled: true
