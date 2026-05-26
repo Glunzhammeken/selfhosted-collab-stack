@@ -1,0 +1,156 @@
+---
+# Forudsætning
+- name: Installér dnsutils til DNS-verifikation
+  ansible.builtin.apt:
+    name: dnsutils
+    state: present
+
+# DNS-verifikation
+- name: Hent serverens offentlige IPv4
+  ansible.builtin.command: curl -4 -s ifconfig.me
+  register: server_public_ip
+  changed_when: false
+
+- name: Slå DNS op for alle subdomains
+  ansible.builtin.command: dig +short {{ item }}.{{ nginx_domain }}
+  register: dns_check
+  changed_when: false
+  loop: "{{ nginx_subdomains }}"
+
+- name: Bekræft at alle subdomains peger på serveren
+  ansible.builtin.assert:
+    that:
+      - item.stdout | trim == server_public_ip.stdout | trim
+    success_msg: "{{ item.item }}.{{ nginx_domain }} peger korrekt på {{ server_public_ip.stdout | trim }}."
+    fail_msg: >
+      {{ item.item }}.{{ nginx_domain }} peger på '{{ item.stdout | trim }}',
+      ikke '{{ server_public_ip.stdout | trim }}'. Ret DNS og prøv igen.
+  loop: "{{ dns_check.results }}"
+
+# Mappestruktur
+- name: Opret mappestruktur til nginx-proxy
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ nginx_proxy_dir }}"
+    - "{{ nginx_proxy_dir }}/conf.d"
+    - "{{ nginx_proxy_dir }}/certbot/conf"
+    - "{{ nginx_proxy_dir }}/certbot/www"
+
+# Konfigurationsfiler
+- name: Læg docker-compose.yml ud fra skabelon
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ nginx_proxy_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Læg nginx.conf ud fra skabelon
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: "{{ nginx_proxy_dir }}/nginx.conf"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Læg bootstrap-konfiguration ud (midlertidig, til certbot-validering)
+  ansible.builtin.template:
+    src: 00-bootstrap.conf.j2
+    dest: "{{ nginx_proxy_dir }}/conf.d/00-bootstrap.conf"
+    owner: root
+    group: root
+    mode: "0644"
+
+# Start Nginx i bootstrap-tilstand
+- name: Start Nginx-container i bootstrap-tilstand
+  ansible.builtin.command:
+    cmd: docker compose up -d nginx
+    chdir: "{{ nginx_proxy_dir }}"
+  changed_when: false
+
+- name: Vent på at Nginx lytter på port 80
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 80
+    timeout: 30
+
+# Verifikation: bootstrap svarer
+- name: Test at Nginx svarer i bootstrap-tilstand
+  ansible.builtin.uri:
+    url: "http://{{ item }}.{{ nginx_domain }}"
+    status_code: 200
+  changed_when: false
+  loop: "{{ nginx_subdomains }}"
+
+# Certifikater
+- name: Tjek om TLS-certifikater allerede er udstedt
+  ansible.builtin.stat:
+    path: "{{ nginx_proxy_dir }}/certbot/conf/live/{{ nginx_subdomains[0] }}.{{ nginx_domain }}/fullchain.pem"
+  register: cert_stat
+
+- name: Udsted TLS-certifikater via Certbot (kun første gang)
+  ansible.builtin.command:
+    cmd: >
+      docker compose run --rm --entrypoint certbot certbot certonly
+      --webroot --webroot-path=/var/www/certbot
+      --email {{ nginx_certbot_email }}
+      --agree-tos --no-eff-email
+      {% if nginx_certbot_staging %}--staging{% endif %}
+      {% for sub in nginx_subdomains %}-d {{ sub }}.{{ nginx_domain }} {% endfor %}
+    chdir: "{{ nginx_proxy_dir }}"
+  when: not cert_stat.stat.exists
+  changed_when: true
+
+# Start Certbot til automatisk fornyelse
+- name: Start Certbot-container til automatisk fornyelse
+  ansible.builtin.command:
+    cmd: docker compose up -d certbot
+    chdir: "{{ nginx_proxy_dir }}"
+  changed_when: false
+
+# Dry-run test
+- name: Test certifikatfornyelse med dry-run
+  ansible.builtin.command:
+    cmd: docker compose run --rm --entrypoint certbot certbot renew --dry-run
+    chdir: "{{ nginx_proxy_dir }}"
+  changed_when: false
+
+# Verifikation: certifikatfiler
+- name: Tjek at alle certifikatfiler er til stede
+  ansible.builtin.stat:
+    path: "{{ nginx_proxy_dir }}/certbot/conf/live/{{ nginx_subdomains[0] }}.{{ nginx_domain }}/{{ item }}"
+  register: cert_files
+  loop:
+    - fullchain.pem
+    - privkey.pem
+    - cert.pem
+    - chain.pem
+
+- name: Bekræft at alle certifikatfiler er til stede
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+    success_msg: "{{ item.item }} er til stede."
+    fail_msg: "ADVARSEL: {{ item.item }} mangler i certbot/conf/live/."
+  loop: "{{ cert_files.results }}"
+
+# Verifikation: containere kører
+- name: Hent status på nginx-proxy-containere
+  ansible.builtin.command:
+    cmd: docker compose ps
+    chdir: "{{ nginx_proxy_dir }}"
+  register: compose_ps
+  changed_when: false
+
+- name: Bekræft at nginx-proxy og certbot kører
+  ansible.builtin.assert:
+    that:
+      - "'nginx-proxy' in compose_ps.stdout"
+      - "'certbot' in compose_ps.stdout"
+    success_msg: "Nginx og Certbot kører. TLS-certifikater er udstedt og klar."
+    fail_msg: "ADVARSEL: En eller begge containere er ikke oppe. Tjek docker compose ps."

@@ -1,0 +1,11 @@
+---
+nginx_domain: "opgavehelten.dk"
+# Bør flyttes til Ansible Vault i produktion
+nginx_certbot_email: "andre-g-glunz@pm.me"
+nginx_subdomains:
+  - cloud
+  - auth
+  - mail
+nginx_proxy_dir: "/opt/nginx-proxy"
+# Sæt true under fejlsøgning for at undgå Let's Encrypts rate limits
+nginx_certbot_staging: false

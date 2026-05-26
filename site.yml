@@ -6,3 +6,4 @@
     - baseline
     - hardening
     - docker
+    - nginx

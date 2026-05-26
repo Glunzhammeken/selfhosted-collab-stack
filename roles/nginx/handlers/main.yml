@@ -1,0 +1,6 @@
+---
+- name: Genindlæs nginx
+  ansible.builtin.command:
+    cmd: docker compose exec nginx nginx -s reload
+    chdir: "{{ nginx_proxy_dir }}"
+  changed_when: false
