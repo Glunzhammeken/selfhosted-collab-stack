@@ -1,0 +1,8 @@
+---
+# Midlertidig playbook til udvikling af app-roller (bilag E, F, G).
+# Springer baseline, hardening, docker og nginx over, da de er stabile.
+# Samles ind i site.yml når alle roller er færdige.
+- name: Deploy applikationer
+  hosts: server
+  become: true
+  roles: []
