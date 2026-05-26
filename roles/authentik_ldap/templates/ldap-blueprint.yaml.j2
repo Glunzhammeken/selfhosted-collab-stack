@@ -1,0 +1,83 @@
+version: 1
+metadata:
+  name: ldap-setup
+  labels:
+    blueprints.goauthentik.io/description: "LDAP provider, outpost og service account"
+entries:
+  # Role skal oprettes FØR brugeren, så !KeyOf kan opløses
+  - model: authentik_rbac.role
+    state: present
+    id: role-ldap-search
+    identifiers:
+      name: ldap-search
+    attrs: {}
+
+  # service_account — kun oprettet én gang; adgangskode læses fra env-variabel
+  - model: authentik_core.user
+    state: created
+    identifiers:
+      username: ldapservice
+    attrs:
+      name: LDAP Service Account
+      type: service_account
+      path: users
+      is_active: true
+      password: !Env [AUTHENTIK_LDAP_SVC_PASS, ""]
+      roles:
+        - !KeyOf role-ldap-search
+
+  - model: authentik_providers_ldap.ldapprovider
+    state: present
+    id: ldap-provider
+    identifiers:
+      name: ldap-provider
+    attrs:
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-authentication-flow]]
+      bind_flow: !Find [authentik_flows.flow, [slug, default-authentication-flow]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      base_dn: "{{ authentik_ldap_base_dn }}"
+      bind_mode: cached
+      search_mode: cached
+
+  - model: authentik_core.application
+    state: present
+    identifiers:
+      slug: ldap
+    attrs:
+      name: LDAP
+      provider: !KeyOf ldap-provider
+      policy_engine_mode: any
+
+  - model: authentik_outposts.dockerserviceconnection
+    state: present
+    id: docker-svc-conn
+    identifiers:
+      name: docker-socket-proxy
+    attrs:
+      local: false
+      url: "http://authentik-socket-proxy:2375"
+
+  - model: authentik_outposts.outpost
+    state: present
+    identifiers:
+      name: "{{ authentik_outpost_name }}"
+    attrs:
+      type: ldap
+      service_connection: !KeyOf docker-svc-conn
+      providers:
+        - !KeyOf ldap-provider
+      config:
+        docker_network: proxy-net
+        authentik_host: "{{ authentik_url }}"
+        authentik_host_insecure: false
+        docker_map_ports: false
+
+  # object_pk er CharField i Django — !KeyOf returnerer integer-PK, Django coercer til string
+  - model: authentik_rbac.objectpermission
+    state: present
+    identifiers:
+      role: !KeyOf role-ldap-search
+      permission: search_full_ldap_directory
+      content_type: !Find [contenttypes.contenttype, [app_label, authentik_providers_ldap], [model, ldapprovider]]
+      object_pk: !KeyOf ldap-provider
+    attrs: {}

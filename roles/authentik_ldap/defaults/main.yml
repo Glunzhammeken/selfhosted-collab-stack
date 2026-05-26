@@ -7,4 +7,3 @@ authentik_ldap_port: 3389
 authentik_outpost_name: "ldap-outpost"
 authentik_outpost_container: "ak-outpost-ldap-outpost"
 nginx_domain: "opgavehelten.dk"
-# authentik_api_token: gemmes i group_vars/all/vault.yml (ansible-vault)

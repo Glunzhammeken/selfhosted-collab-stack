@@ -22,6 +22,7 @@ services:
       - ./media:/media
       - ./certs:/certs
       - ./custom-templates:/templates
+      - ./blueprints:/blueprints/custom
     environment:
       AUTHENTIK_OUTPOSTS__CONTAINER_IMAGE_BASE: ghcr.io/goauthentik/%(type)s:%(version)s
       AUTHENTIK_OUTPOSTS__DOCKER_IMAGE_BASE: ghcr.io/goauthentik/%(type)s:%(version)s
