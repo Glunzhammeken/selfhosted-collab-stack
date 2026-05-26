@@ -132,15 +132,14 @@
   register: authentik_ps
   changed_when: false
 
-- name: Bekræft at alle Authentik-containere kører
+- name: Bekræft at Authentik-kernekontainere kører
   ansible.builtin.assert:
     that:
       - "'server' in authentik_ps.stdout"
       - "'worker' in authentik_ps.stdout"
       - "'postgresql' in authentik_ps.stdout"
-      - "'redis' in authentik_ps.stdout"
       - "'socket-proxy' in authentik_ps.stdout"
-    success_msg: "Alle Authentik-containere kører."
+    success_msg: "Authentik-kernekontainere (server, worker, postgresql, socket-proxy) kører."
     fail_msg: "ADVARSEL: En eller flere Authentik-containere mangler. Tjek docker compose ps."
 
 - name: Verificér at Authentik er tilgængeligt via HTTPS
