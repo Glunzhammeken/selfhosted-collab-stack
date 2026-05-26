@@ -45,7 +45,45 @@
     port: 8080
     timeout: 60
 
-# Nginx vhost
+# Manuel AIO-opsætning (kun ved første kørsel)
+- name: Tjek om AIO-opsætning allerede er gennemført
+  ansible.builtin.command: docker inspect nextcloud-aio-apache
+  register: aio_apache_stat
+  changed_when: false
+  failed_when: false
+
+- name: Vent på manuel AIO-opsætning via SSH-tunnel
+  ansible.builtin.pause:
+    prompt: |
+
+      ════════════════════════════════════════════════════════
+      MANUEL HANDLING PÅKRÆVET — tryk Enter når du er færdig
+      ════════════════════════════════════════════════════════
+
+      Åbn SSH-tunnel fra din lokale maskine:
+        ssh -L 8080:localhost:8080 root@<server-ip>
+
+      Gå til: https://localhost:8080
+
+        1. Notér passphrasen — den kan ikke gendannes
+        2. Klik "Open Nextcloud AIO login"
+        3. Indtast domænet: {{ nextcloud_domain }}
+        4. Vælg containere: Talk, Collabora, ClamAV
+        5. Klik "Download and start containers"
+        6. Vent til alle containere viser grønt i AIO-grænsefladen
+
+      ════════════════════════════════════════════════════════
+  when: aio_apache_stat.rc != 0
+
+- name: Vent på at nextcloud-aio-apache er tilgængelig (op til 10 minutter)
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 11000
+    timeout: 600
+    delay: 5
+  when: aio_apache_stat.rc != 0
+
+# Nginx vhost — deployes efter apache-containeren eksisterer
 - name: Læg Nginx vhost for Nextcloud ud
   ansible.builtin.template:
     src: cloud.conf.j2
@@ -84,10 +122,9 @@
     success_msg: "Nextcloud AIO master-container kører."
     fail_msg: "ADVARSEL: Nextcloud AIO master-container kører ikke."
 
-- name: Påmind om manuel AIO-opsætning
-  ansible.builtin.debug:
-    msg: >
-      Nextcloud AIO master-container kører. Gennemfør initial-setup via
-      SSH-tunnel: ssh -L 8080:localhost:8080 root@<server-ip>
-      Åbn derefter https://localhost:8080 i browseren.
-      Notér passphrasen — den kan ikke gendannes.
+- name: Verificér at Nextcloud er tilgængeligt via HTTPS
+  ansible.builtin.uri:
+    url: "https://{{ nextcloud_domain }}"
+    status_code: [200, 302]
+    validate_certs: true
+  changed_when: false
