@@ -1,0 +1,9 @@
+---
+nextcloud_dir: "/opt/nextcloud"
+nextcloud_domain: "cloud.opgavehelten.dk"
+nextcloud_upload_limit: "16G"
+nextcloud_max_time: "3600"
+nextcloud_talk_port: "3478"
+nextcloud_ssl_cert_dir: "cloud.opgavehelten.dk"
+nginx_proxy_dir: "/opt/nginx-proxy"
+nginx_domain: "opgavehelten.dk"

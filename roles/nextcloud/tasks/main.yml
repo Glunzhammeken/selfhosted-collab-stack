@@ -1,0 +1,93 @@
+---
+# Projektmappe
+- name: Opret Nextcloud-projektmappe
+  ansible.builtin.file:
+    path: "{{ nextcloud_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# compose.yaml
+- name: Læg compose.yaml ud fra skabelon
+  ansible.builtin.template:
+    src: compose.yaml.j2
+    dest: "{{ nextcloud_dir }}/compose.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+
+# Start master-container
+- name: Tjek om Nextcloud AIO master-container allerede kører
+  ansible.builtin.command:
+    cmd: docker compose ps --quiet nextcloud-aio-mastercontainer
+    chdir: "{{ nextcloud_dir }}"
+  register: nextcloud_running
+  changed_when: false
+  failed_when: false
+
+- name: Træk Nextcloud AIO-image (kun ved første opstart)
+  ansible.builtin.command:
+    cmd: docker compose pull
+    chdir: "{{ nextcloud_dir }}"
+  when: nextcloud_running.stdout == ''
+  changed_when: true
+
+- name: Start Nextcloud AIO master-container
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ nextcloud_dir }}"
+  changed_when: false
+
+- name: Vent på at AIO-grænsefladen er klar på port 8080
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 8080
+    timeout: 60
+
+# Nginx vhost
+- name: Læg Nginx vhost for Nextcloud ud
+  ansible.builtin.template:
+    src: cloud.conf.j2
+    dest: "{{ nginx_proxy_dir }}/conf.d/cloud.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  register: cloud_vhost
+
+# Alle tre domæner har nu egne vhosts — bootstrap-filen fjernes
+- name: Fjern 00-bootstrap.conf (alle domæner har egne vhosts)
+  ansible.builtin.file:
+    path: "{{ nginx_proxy_dir }}/conf.d/00-bootstrap.conf"
+    state: absent
+  register: bootstrap_removed
+
+- name: Genindlæs Nginx efter vhost-ændringer
+  ansible.builtin.command:
+    cmd: docker compose exec nginx nginx -s reload
+    chdir: "{{ nginx_proxy_dir }}"
+  when: cloud_vhost.changed or bootstrap_removed.changed
+  changed_when: true
+
+# Verifikation
+- name: Bekræft at Nextcloud AIO master-container kører
+  ansible.builtin.command:
+    cmd: docker compose ps
+    chdir: "{{ nextcloud_dir }}"
+  register: nextcloud_ps
+  changed_when: false
+
+- name: Bekræft at master-containeren er oppe
+  ansible.builtin.assert:
+    that:
+      - "'nextcloud-aio-mastercontainer' in nextcloud_ps.stdout"
+    success_msg: "Nextcloud AIO master-container kører."
+    fail_msg: "ADVARSEL: Nextcloud AIO master-container kører ikke."
+
+- name: Påmind om manuel AIO-opsætning
+  ansible.builtin.debug:
+    msg: >
+      Nextcloud AIO master-container kører. Gennemfør initial-setup via
+      SSH-tunnel: ssh -L 8080:localhost:8080 root@<server-ip>
+      Åbn derefter https://localhost:8080 i browseren.
+      Notér passphrasen — den kan ikke gendannes.

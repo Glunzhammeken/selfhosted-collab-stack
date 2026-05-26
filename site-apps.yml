@@ -8,3 +8,4 @@
   roles:
     - authentik
     - mailcow
+    - nextcloud
