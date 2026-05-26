@@ -212,7 +212,7 @@
       name: ldap-provider
       authorization_flow: "{{ _auth_flow.json.results[0].pk }}"
       bind_flow: "{{ _auth_flow.json.results[0].pk }}"
-      unbind_flow: "{{ _invalidation_flow.json.results[0].pk }}"
+      invalidation_flow: "{{ _invalidation_flow.json.results[0].pk }}"
       base_dn: "{{ authentik_ldap_base_dn }}"
       bind_mode: cached
       search_mode: cached
