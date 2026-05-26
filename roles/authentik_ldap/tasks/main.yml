@@ -254,10 +254,7 @@
     headers: "{{ _ak_h }}"
     status_code: [200, 201]
     validate_certs: true
-  when: >-
-    _perm_check.json.results | default([])
-    | selectattr('permissions', 'search', 'search_full_ldap_directory')
-    | list | length == 0
+  when: _perm_check.json.pagination.count | int == 0
 
 # ──────────────────────────────────────────────
 # LDAP APPLIKATION
