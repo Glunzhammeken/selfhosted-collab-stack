@@ -1,0 +1,5 @@
+---
+#standard værdier for fail2ban. Kan overskrives
+fail2ban_bantime: 1h
+fail2ban_findtime: 10m
+fail2ban_maxretry: 5

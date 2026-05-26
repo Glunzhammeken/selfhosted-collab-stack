@@ -1,8 +1,9 @@
-# Skabelon for en kundes inventory. Kopiér til hosts.yml og udfyld.
-# hosts.yml er gitignored, så de rigtige værdier lækker ikke til repoet.
+# Skabelon for en kundes inventory. Kopiér til hosts.yml.
+# Stakken kører på én maskine: Ansible ligger på serveren og
+# konfigurerer den SAMME maskine via local connection. Derfor
+# ingen IP, bruger eller SSH-nøgle her: der er ingen fjernforbindelse.
+# Det kundespecifikke (domæne osv.) hører i group_vars/, ikke her.
 all:
   hosts:
     server:
-      ansible_host: SERVER_IP_HER
-      ansible_user: root
-      ansible_ssh_private_key_file: ~/.ssh/DIN_NOEGLE_HER
+      ansible_connection: local

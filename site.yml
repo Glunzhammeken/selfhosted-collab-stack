@@ -1,0 +1,6 @@
+---
+- name: Klargør og konfigurer selfhosted collab stack
+  hosts: server
+  become: true
+  roles:
+    - baseline

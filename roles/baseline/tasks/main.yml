@@ -1,0 +1,53 @@
+---
+- name: Installér baseline-pakker (ufw, fail2ban)
+  ansible.builtin.apt:
+    name:
+      - ufw
+      - fail2ban
+    state: present
+    update_cache: true
+- name: Opgradér alle pakker
+  ansible.builtin.apt:
+    upgrade: dist
+- name: Check om reboot er nødvendigt
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: reboot_required_file
+- name: Reboot server hvis nødvendigt
+  ansible.builtin.reboot:
+    msg: "Reboot udløst af ansible"
+    reboot_timeout: 600 #lidt ligemeget da forbindelsen ryger men bare god skik
+  when: reboot_required_file.stat.exists
+- name : Tillad SSH port 22
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+- name: Aktivér UFW
+  community.general.ufw:
+    state: enabled
+- name: Deaktivér password login
+  ansible.builtin.copy:
+    content: "PasswordAuthentication no\n"
+    dest: /etc/ssh/sshd_config.d/01-no-password.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Genstart SSH
+
+- name: Deaktivér ssh.socket (Ubuntu 24.04 socket activation overstyrer ellers config)
+  ansible.builtin.systemd_service:
+    name: ssh.socket
+    state: stopped
+    enabled: false
+  notify: Genstart SSH
+
+- name: Aktivér ssh.service eksplicit
+  ansible.builtin.systemd_service:
+    name: ssh.service
+    enabled: true
+  notify: Genstart SSH
+
+- name: Aktivér SSH-ændringer nu (flush handlers før vi går videre)
+  ansible.builtin.meta: flush_handlers
+  
