@@ -13,10 +13,15 @@
   ansible.builtin.stat:
     path: /var/run/reboot-required
   register: reboot_required_file
-- name: Reboot server hvis nødvendigt
-  ansible.builtin.reboot:
-    msg: "Reboot udløst af ansible"
-    reboot_timeout: 600 #lidt ligemeget da forbindelsen ryger men bare god skik
+
+- name: Stop og bed om manuel reboot hvis kernen er opdateret
+  ansible.builtin.fail:
+    msg: >
+      En pakkeopgradering kræver reboot (/var/run/reboot-required findes).
+      Da stakken kører på én maskine, kan playbooken ikke genstarte sig selv
+      midt i kørslen. Kør 'reboot' manuelt, log ind igen, og kør
+      'ansible-playbook site.yml' forfra. Anden gang er der ingen
+      kerneopdatering, så denne task springes over og playbooken fortsætter.
   when: reboot_required_file.stat.exists
 - name : Tillad SSH port 22
   community.general.ufw:
