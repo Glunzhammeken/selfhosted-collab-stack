@@ -1,0 +1,108 @@
+---
+- name: Fjern eventuelle gamle Docker-pakker fra Ubuntus repo
+  ansible.builtin.apt:
+    name:
+      - docker.io
+      - docker-doc
+      - docker-compose
+      - docker-compose-v2
+      - podman-docker
+      - containerd
+      - runc
+    state: absent
+
+- name: Installér basispakker til Docker-repo
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+    update_cache: true
+
+- name: Opret keyrings-mappe til apt-signeringsnøgler
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Hent Dockers officielle GPG-signeringsnøgle
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Tilføj Dockers officielle repository (deb822-format)
+  ansible.builtin.deb822_repository:
+    name: docker
+    types: deb
+    uris: https://download.docker.com/linux/ubuntu
+    suites: "{{ ansible_distribution_release }}"
+    components: stable
+    architectures: "{{ ansible_architecture | replace('x86_64', 'amd64') }}"
+    signed_by: /etc/apt/keyrings/docker.asc
+    state: present
+
+- name: Installér Docker Engine og plugins
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+
+- name: Læg Docker daemon-konfiguration ud (log-rotation)
+  ansible.builtin.template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Genstart docker
+
+- name: Aktivér daemon-konfiguration nu før verifikation
+  ansible.builtin.meta: flush_handlers
+
+- name: Sørg for at docker kører og starter ved boot
+  ansible.builtin.systemd_service:
+    name: docker
+    state: started
+    enabled: true
+
+# Verifikation
+- name: Hent Docker-version
+  ansible.builtin.command: docker --version
+  register: docker_version
+  changed_when: false
+
+- name: Hent Docker Compose-version
+  ansible.builtin.command: docker compose version
+  register: compose_version
+  changed_when: false
+
+- name: Bekræft at Docker og Compose v2 er tilgængelige
+  ansible.builtin.assert:
+    that:
+      - "'Docker version' in docker_version.stdout"
+      - "'Docker Compose version v2' in compose_version.stdout"
+    success_msg: "Docker Engine og Compose v2 er installeret og tilgængelige."
+    fail_msg: "ADVARSEL: Docker eller Compose v2 mangler."
+
+- name: Kør hello-world som røgtest
+  ansible.builtin.command: docker run --rm hello-world
+  register: hello_world
+  changed_when: false
+
+- name: Bekræft at hello-world-containeren kørte
+  ansible.builtin.assert:
+    that:
+      - "'Hello from Docker!' in hello_world.stdout"
+    success_msg: "Docker kan trække og køre en container (hello-world virkede)."
+    fail_msg: "ADVARSEL: hello-world-containeren kørte ikke som forventet."

@@ -1,0 +1,5 @@
+---
+# Docker log-rotation (json-file driver). Forhindrer at container-logs
+# fylder disken ubegrænset over tid.
+docker_log_max_size: "10m"
+docker_log_max_file: "3"
