@@ -1,14 +1,20 @@
 ---
 # Mappestruktur
-- name: Opret Authentik-mappe og undermapper
+- name: Opret Authentik-projektmappe
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "{{ authentik_dir }}"
     state: directory
     owner: root
     group: root
     mode: "0755"
+
+# Undermapper monteres som Docker-volumes og får ejerskab styret af containeren.
+# Vi sikrer kun at de eksisterer, ikke owner/group.
+- name: Opret Authentik-undermapper til Docker-volumes
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
   loop:
-    - "{{ authentik_dir }}"
     - "{{ authentik_dir }}/media"
     - "{{ authentik_dir }}/certs"
     - "{{ authentik_dir }}/custom-templates"
