@@ -106,17 +106,17 @@
   when: not cert_stat.stat.exists
   changed_when: true
 
+# Dry-run test (skal køre FØR certbot-containeren startes, ellers blokerer dens lock-fil)
+- name: Test certifikatfornyelse med dry-run
+  ansible.builtin.command:
+    cmd: docker compose run --rm --entrypoint certbot certbot renew --dry-run
+    chdir: "{{ nginx_proxy_dir }}"
+  changed_when: false
+
 # Start Certbot til automatisk fornyelse
 - name: Start Certbot-container til automatisk fornyelse
   ansible.builtin.command:
     cmd: docker compose up -d certbot
-    chdir: "{{ nginx_proxy_dir }}"
-  changed_when: false
-
-# Dry-run test
-- name: Test certifikatfornyelse med dry-run
-  ansible.builtin.command:
-    cmd: docker compose run --rm --entrypoint certbot certbot renew --dry-run
     chdir: "{{ nginx_proxy_dir }}"
   changed_when: false
 
