@@ -91,7 +91,8 @@
   ansible.builtin.assert:
     that:
       - "'Docker version' in docker_version.stdout"
-      - "'Docker Compose version v2' in compose_version.stdout"
+      - "compose_version.rc == 0"
+      - "(compose_version.stdout + compose_version.stderr) | regex_search('version v?2\\.') is not none"
     success_msg: "Docker Engine og Compose v2 er installeret og tilgængelige."
     fail_msg: "ADVARSEL: Docker eller Compose v2 mangler."
 
