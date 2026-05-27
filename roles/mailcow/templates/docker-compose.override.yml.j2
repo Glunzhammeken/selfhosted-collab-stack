@@ -5,12 +5,20 @@ services:
       - mailcow-network
       - proxy-net
 
+  php-fpm-mailcow:
+    networks:
+      - mailcow-network
+      - proxy-net
+
   postfix-mailcow:
     volumes:
       - /opt/nginx-proxy/certbot/conf/live/{{ mailcow_ssl_cert_dir }}/fullchain.pem:/opt/postfix/conf/ssl/cert.pem:ro
       - /opt/nginx-proxy/certbot/conf/live/{{ mailcow_ssl_cert_dir }}/privkey.pem:/opt/postfix/conf/ssl/key.pem:ro
 
   dovecot-mailcow:
+    networks:
+      - mailcow-network
+      - proxy-net
     volumes:
       - /opt/nginx-proxy/certbot/conf/live/{{ mailcow_ssl_cert_dir }}/fullchain.pem:/opt/dovecot/ssl/cert.pem:ro
       - /opt/nginx-proxy/certbot/conf/live/{{ mailcow_ssl_cert_dir }}/privkey.pem:/opt/dovecot/ssl/key.pem:ro
