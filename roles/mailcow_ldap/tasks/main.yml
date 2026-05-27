@@ -168,6 +168,9 @@
 # KONFIGURÉR IDENTITY PROVIDER (LDAP) VIA API
 # ──────────────────────────────────────────────
 - name: Konfigurér LDAP som Identity Provider i Mailcow
+  # Feltnavne matchet mod GET /api/v1/get/identity-provider:
+  # basedn/binddn/bindpass (ingen underscore), default_template som streng,
+  # login_provisioning som boolean. Ukendte felter ignoreres stille af API'et.
   ansible.builtin.uri:
     url: "{{ mailcow_api_base_url }}/api/v1/edit/identity-provider/ldap"
     method: POST
@@ -176,25 +179,27 @@
       Content-Type: application/json
     body_format: json
     body:
-      authsource: ldap
+      authsource: "ldap"
       host: "{{ mailcow_ldap_host }}"
-      port: "{{ mailcow_ldap_port }}"
+      port: "{{ mailcow_ldap_port | string }}"
       use_ssl: "{{ mailcow_ldap_use_ssl }}"
       use_tls: "{{ mailcow_ldap_use_tls }}"
-      base_dn: "{{ mailcow_ldap_base_dn }}"
-      username_field: "{{ mailcow_ldap_username_field }}"
+      ignore_ssl_errors: false
+      basedn: "{{ mailcow_ldap_base_dn }}"
+      binddn: "{{ mailcow_ldap_bind_dn }}"
+      bindpass: "{{ _ldap_bind_password }}"
       filter: "{{ mailcow_ldap_filter }}"
-      bind_dn: "{{ mailcow_ldap_bind_dn }}"
-      bind_password: "{{ _ldap_bind_password }}"
       attribute_field: "{{ mailcow_ldap_attribute_field }}"
-      mapper_attr_for_template: "{{ mailcow_ldap_attribute_mapping }}"
-      mapper_template_name: "{{ mailcow_ldap_attribute_mapping }}"
+      username_field: "{{ mailcow_ldap_username_field }}"
+      default_template: "{{ mailcow_ldap_attribute_mapping }}"
+      login_provisioning: true
       periodic_sync: "1"
       import_users: "1"
-      sync_interval: "{{ mailcow_ldap_sync_interval }}"
+      sync_interval: "{{ mailcow_ldap_sync_interval | string }}"
+      mappers: []
+      templates: []
     status_code: [200]
     validate_certs: true
-  no_log: true
   register: _idp_config
   changed_when: _idp_config.status == 200
 
