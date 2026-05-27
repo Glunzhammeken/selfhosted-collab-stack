@@ -213,7 +213,6 @@
   register: _auth_test
   changed_when: false
   failed_when: "'auth succeeded' not in _auth_test.stdout | lower"
-  no_log: true
 
 - name: Hent liste over alle mailboxe efter auth-test
   ansible.builtin.uri:
