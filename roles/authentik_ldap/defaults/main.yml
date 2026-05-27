@@ -7,3 +7,6 @@ authentik_ldap_port: 3389
 authentik_outpost_name: "ldap-outpost"
 authentik_outpost_container: "ak-outpost-ldap-outpost"
 nginx_domain: "opgavehelten.dk"
+# Kendt password til testuser1 og testuser2 — kun til udvikling/test.
+# Bruges af Mailcow- og Nextcloud-LDAP-integrationsbilag til at verificere login.
+authentik_testuser_password: "Andr3k012!"

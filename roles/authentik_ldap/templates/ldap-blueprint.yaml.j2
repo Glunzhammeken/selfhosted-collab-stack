@@ -31,6 +31,30 @@ entries:
       roles:
         - !KeyOf role-ldap-search
 
+  # Testbrugere til verifikation af Mailcow- og Nextcloud-integration.
+  # Kendt password (Andr3k012!) — kun til udvikling/test.
+  - model: authentik_core.user
+    state: created
+    identifiers:
+      username: testuser1
+    attrs:
+      name: Test User 1
+      email: testuser1@{{ nginx_domain }}
+      path: users
+      is_active: true
+      password: "{{ authentik_testuser_password }}"
+
+  - model: authentik_core.user
+    state: created
+    identifiers:
+      username: testuser2
+    attrs:
+      name: Test User 2
+      email: testuser2@{{ nginx_domain }}
+      path: users
+      is_active: true
+      password: "{{ authentik_testuser_password }}"
+
   - model: authentik_providers_ldap.ldapprovider
     state: present
     id: ldap-provider
