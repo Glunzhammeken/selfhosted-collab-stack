@@ -65,8 +65,11 @@ entries:
       authentication_flow: !Find [authentik_flows.flow, [slug, default-authentication-flow]]
       invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
       base_dn: "{{ authentik_ldap_base_dn }}"
-      bind_mode: cached
-      search_mode: cached
+      # direct: hver bind valideres mod Authentik. Nødvendigt for at SOGo og
+      # andre LDAP-klienter kan binde testbrugere der ikke først har logget
+      # ind via Authentiks web-UI (cached kræver eksisterende cache-entry).
+      bind_mode: direct
+      search_mode: direct
 
   - model: authentik_core.application
     state: present
