@@ -35,9 +35,8 @@ mailcow_ldap_attribute_field: "objectClass"
 mailcow_ldap_attribute_mapping: "default"
 mailcow_ldap_sync_interval: 15
 
-# Container-navn for verifikations-tasks
+# Container-navn til LDAP-reachability-test
 mailcow_phpfpm_container: "mailcowdockerized-php-fpm-mailcow-1"
-mailcow_dovecot_container: "mailcowdockerized-dovecot-mailcow-1"
 
 # Testbrugere — bruges til at verificere auto-provisionering via IMAP-login
 mailcow_ldap_testusers:

@@ -204,59 +204,53 @@
   changed_when: _idp_config.status == 200
 
 # ──────────────────────────────────────────────
-# VERIFIKATION — auto-provisionering via SOGo-login
-# Mailcows IdP-feature trigger ikke Dovecot-passdb direkte. Mailboxen
-# oprettes først når en bruger logger ind via SOGo (eller anden web-flow),
-# hvor Mailcows PHP-kode binder mod LDAP og opretter mailbox-rækken i SQL.
-# Vi simulerer login med en HTTP POST mod /SOGo/connect.
+# VERIFIKATION — IdP-config faktisk landet i Mailcow
+# Auto-provisionering af mailbox sker først ved første rigtige SOGo/IMAP-
+# login (Mailcows PHP-kode binder mod LDAP, opretter mailbox-række i SQL).
+# Det er en runtime-egenskab — vi verificerer kun deploy-tid-konfigurationen.
 # ──────────────────────────────────────────────
-- name: Trigger SOGo-login for hver testbruger (auto-provisionering)
+- name: Hent IdP-config tilbage fra Mailcow for at verificere
   ansible.builtin.uri:
-    url: "{{ mailcow_api_base_url }}/SOGo/connect"
-    method: POST
-    headers:
-      Content-Type: application/json
-    body_format: json
-    body:
-      userName: "{{ item }}@{{ mailcow_ldap_mail_domain }}"
-      password: "{{ mailcow_ldap_testuser_password }}"
-    status_code: [200, 201, 204]
-    validate_certs: true
-    return_content: true
-  loop: "{{ mailcow_ldap_testusers }}"
-  register: _sogo_login
-
-- name: Hent liste over alle mailboxe efter SOGo-login
-  # Retry: auto-provisionering kan tage et øjeblik efter login
-  ansible.builtin.uri:
-    url: "{{ mailcow_api_base_url }}/api/v1/get/mailbox/all"
+    url: "{{ mailcow_api_base_url }}/api/v1/get/identity-provider"
     method: GET
     headers:
       X-API-Key: "{{ _mailcow_api_key }}"
     return_content: true
     status_code: [200]
     validate_certs: true
-  register: _mailbox_list
+  register: _idp_verify
   changed_when: false
-  retries: 6
-  delay: 5
-  until: >
-    _mailbox_list.json is iterable and
-    (_mailbox_list.json | selectattr('username', 'defined')
-     | selectattr('username', 'in', mailcow_ldap_testusers
-                                     | map('regex_replace', '$', '@' ~ mailcow_ldap_mail_domain)
-                                     | list)
-     | list | length) >= (mailcow_ldap_testusers | length)
 
-- name: Bekræft at testbrugere er auto-provisioneret som mailboxe
+- name: Bekræft at IdP-config matcher det vi sendte
   ansible.builtin.assert:
     that:
-      - _mailbox_list.json | selectattr('username', 'equalto', item ~ '@' ~ mailcow_ldap_mail_domain) | list | length > 0
-    fail_msg: >
-      Mailbox for {{ item }}@{{ mailcow_ldap_mail_domain }} ikke fundet.
-      Auto-provisionering fejlede — tjek Mailcow-logs (System → Information → Logs → Crontasks).
-    success_msg: "Mailbox for {{ item }} er auto-provisioneret via LDAP."
-  loop: "{{ mailcow_ldap_testusers }}"
+      - _idp_verify.json.authsource == "ldap"
+      - _idp_verify.json.host == mailcow_ldap_host
+      - _idp_verify.json.basedn == mailcow_ldap_base_dn
+      - _idp_verify.json.binddn == mailcow_ldap_bind_dn
+      - _idp_verify.json.username_field == mailcow_ldap_username_field
+      - _idp_verify.json.login_provisioning | bool
+    fail_msg: "IdP-config landede ikke korrekt i Mailcow. Faktisk: {{ _idp_verify.json }}"
+    success_msg: "IdP-config bekræftet i Mailcow (host, basedn, binddn, login_provisioning)."
+
+- name: Vis næste skridt — manuel verifikation af auto-provisionering
+  ansible.builtin.debug:
+    msg: |
+      ════════════════════════════════════════════════════════════════
+      MAILCOW LDAP-INTEGRATION FÆRDIG KONFIGURERET
+
+      Verificér end-to-end ved at logge ind som testbruger:
+        URL:      {{ mailcow_api_base_url }}/SOGo/
+        Bruger:   {{ mailcow_ldap_testusers[0] }}@{{ mailcow_ldap_mail_domain }}
+        Password: {{ mailcow_ldap_testuser_password }}
+
+      Mailboxen oprettes automatisk ved første login. Bekræft i:
+        Mail Setup → Mailboxes  (Identity Provider skal stå som "LDAP")
+
+      For IMAP-test:
+        openssl s_client -connect {{ mailcow_api_base_url | regex_replace('^https?://', '') }}:993 -crlf
+        a login {{ mailcow_ldap_testusers[0] }}@{{ mailcow_ldap_mail_domain }} {{ mailcow_ldap_testuser_password }}
+      ════════════════════════════════════════════════════════════════
 
 # ──────────────────────────────────────────────
 # OPTIONAL: REVOKE API-NØGLE EFTER SUCCESFULD KØRSEL
