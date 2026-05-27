@@ -191,39 +191,66 @@
   register: _idp_verify
   changed_when: false
 
-- name: Bekræft at IdP-config er sat manuelt i UI
+- name: Tjek om IdP-config allerede er sat
+  ansible.builtin.set_fact:
+    _idp_already_set: >-
+      {{ (_idp_verify.json.authsource | default('') == 'ldap')
+         and (_idp_verify.json.host | default('') == mailcow_ldap_host)
+         and (_idp_verify.json.basedn | default('') == mailcow_ldap_base_dn)
+         and (_idp_verify.json.binddn | default('') == mailcow_ldap_bind_dn) }}
+
+- name: Pause indtil IdP-config er udfyldt manuelt i UI
+  ansible.builtin.pause:
+    prompt: |
+
+      ════════════════════════════════════════════════════════════════
+      IdP-config skal sættes manuelt i Mailcow én gang.
+
+      1. Åbn: {{ mailcow_api_base_url }}
+      2. Gå til: System → Configuration → Access → Identity Provider
+      3. Vælg "LDAP" og udfyld:
+
+         Host:               {{ mailcow_ldap_host }}
+         Port:               {{ mailcow_ldap_port }}
+         Use SSL/TLS:        slået fra
+         Base DN:            {{ mailcow_ldap_base_dn }}
+         Username Field:     {{ mailcow_ldap_username_field }}
+         Filter:             {{ mailcow_ldap_filter }}
+         Bind DN:            {{ mailcow_ldap_bind_dn }}
+         Bind Password:      kør:  cat {{ authentik_dir }}/ldap_service_pass
+         Attribute Field:    {{ mailcow_ldap_attribute_field }}
+         Attribute Mapping:  Attribute=default, Template=Default
+         Auto-create users on login:  ✓
+         Periodic Full Sync: ✓
+         Import Users:       ✓
+         Sync interval:      {{ mailcow_ldap_sync_interval }}
+
+      4. Klik Save, derefter Connection Test ("Connection successful")
+      5. Tryk Enter her for at fortsætte
+      ════════════════════════════════════════════════════════════════
+  when: not _idp_already_set | bool
+
+- name: Hent IdP-config igen (efter manuel UI-save)
+  ansible.builtin.uri:
+    url: "{{ mailcow_api_base_url }}/api/v1/get/identity-provider"
+    method: GET
+    headers:
+      X-API-Key: "{{ _mailcow_api_key }}"
+    return_content: true
+    status_code: [200]
+    validate_certs: true
+  register: _idp_verify
+  changed_when: false
+  when: not _idp_already_set | bool
+
+- name: Bekræft at IdP-config nu er sat korrekt
   ansible.builtin.assert:
     that:
       - _idp_verify.json.authsource | default('') == 'ldap'
       - _idp_verify.json.host | default('') == mailcow_ldap_host
       - _idp_verify.json.basedn | default('') == mailcow_ldap_base_dn
       - _idp_verify.json.binddn | default('') == mailcow_ldap_bind_dn
-    fail_msg: |
-      ════════════════════════════════════════════════════════════════
-      IdP-config ikke sat (eller forkert) i Mailcow.
-
-      Konfigurér manuelt:
-        {{ mailcow_api_base_url }} → System → Configuration → Access → Identity Provider
-
-      Indtast:
-        Identity Provider:  LDAP
-        Host:               {{ mailcow_ldap_host }}
-        Port:               {{ mailcow_ldap_port }}
-        Use SSL/TLS:        slået fra
-        Base DN:            {{ mailcow_ldap_base_dn }}
-        Username Field:     {{ mailcow_ldap_username_field }}
-        Filter:             {{ mailcow_ldap_filter }}
-        Bind DN:            {{ mailcow_ldap_bind_dn }}
-        Bind Password:      (cat {{ authentik_dir }}/ldap_service_pass)
-        Attribute Field:    {{ mailcow_ldap_attribute_field }}
-        Attribute Mapping:  Attribute=default, Template=Default
-        Auto-create users on login:  ✓
-        Periodic Full Sync: ✓
-        Import Users:       ✓
-        Sync interval:      {{ mailcow_ldap_sync_interval }}
-
-      Klik Save, derefter Connection Test. Kør så playbook igen.
-      ════════════════════════════════════════════════════════════════
+    fail_msg: "IdP-config matcher stadig ikke. Faktisk: {{ _idp_verify.json }}"
     success_msg: "IdP-config verificeret i Mailcow (host, basedn, binddn matcher)."
 
 - name: Vis næste skridt — manuel verifikation af auto-provisionering
