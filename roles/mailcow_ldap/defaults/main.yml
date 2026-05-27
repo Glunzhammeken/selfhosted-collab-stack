@@ -3,24 +3,12 @@
 mailcow_dir: "/opt/mailcow"
 authentik_dir: "/opt/authentik"
 
-# Mail-domæne der oprettes i Mailcow
+# Mail-domæne der oprettes manuelt i Mailcow UI
 mailcow_ldap_mail_domain: "opgavehelten.dk"
 mailcow_ldap_mail_domain_description: "Hovedomæne"
 
-# Mailcow API
-# API-nøglen genereres manuelt i Mailcow UI (Configuration → Access → API)
-# og indtastes via interaktiv prompt ved første kørsel. Gemmes derefter
-# i mailcow_api_key_file så efterfølgende kørsler bare læser den.
-mailcow_api_key_file: "{{ mailcow_dir }}/api_key"
-mailcow_api_base_url: "https://{{ mailcow_hostname | default('mail.opgavehelten.dk') }}"
-
-# Sæt til true for automatisk at fjerne API-nøglen fra mailcow's DB
-# efter en succesfuld kørsel. Default: false så playbooken kan re-køres.
-# Kør evt. én sidste gang med -e mailcow_ldap_revoke_api_key=true når alt virker.
-mailcow_ldap_revoke_api_key: false
-
-# Container-navn til DB-revoke (bruges kun hvis revoke = true)
-mailcow_mariadb_service: "mysql-mailcow"
+# URL til Mailcow UI — bruges kun i pause-prompts som klik-anvisning
+mailcow_ui_url: "https://{{ mailcow_hostname | default('mail.opgavehelten.dk') }}"
 
 # LDAP-bind mod Authentik-outposten
 mailcow_ldap_host: "ak-outpost-ldap-outpost"
@@ -35,10 +23,10 @@ mailcow_ldap_attribute_field: "objectClass"
 mailcow_ldap_attribute_mapping: "default"
 mailcow_ldap_sync_interval: 15
 
-# Container-navn til LDAP-reachability-test
+# Container-navn til LDAP-reachability-test fra php-fpm-mailcow
 mailcow_phpfpm_container: "mailcowdockerized-php-fpm-mailcow-1"
 
-# Testbrugere — bruges til at verificere auto-provisionering via IMAP-login
+# Testbrugere — bruges til manuel E2E-verifikation efter UI-konfiguration
 mailcow_ldap_testusers:
   - testuser1
   - testuser2
