@@ -204,22 +204,30 @@
   changed_when: _idp_config.status == 200
 
 # ──────────────────────────────────────────────
-# VERIFIKATION — auto-provisionering via doveadm auth
-# Trigger LDAP-bind via Dovecot; mailbox auto-oprettes ved success.
+# VERIFIKATION — auto-provisionering via SOGo-login
+# Mailcows IdP-feature trigger ikke Dovecot-passdb direkte. Mailboxen
+# oprettes først når en bruger logger ind via SOGo (eller anden web-flow),
+# hvor Mailcows PHP-kode binder mod LDAP og opretter mailbox-rækken i SQL.
+# Vi simulerer login med en HTTP POST mod /SOGo/connect.
 # ──────────────────────────────────────────────
-- name: Test LDAP-auth via Dovecot for hver testbruger
-  ansible.builtin.command:
-    cmd: >
-      docker exec {{ mailcow_dovecot_container }}
-      doveadm auth test
-      {{ item }}@{{ mailcow_ldap_mail_domain }}
-      {{ mailcow_ldap_testuser_password }}
+- name: Trigger SOGo-login for hver testbruger (auto-provisionering)
+  ansible.builtin.uri:
+    url: "{{ mailcow_api_base_url }}/SOGo/connect"
+    method: POST
+    headers:
+      Content-Type: application/json
+    body_format: json
+    body:
+      userName: "{{ item }}@{{ mailcow_ldap_mail_domain }}"
+      password: "{{ mailcow_ldap_testuser_password }}"
+    status_code: [200, 201, 204]
+    validate_certs: true
+    return_content: true
   loop: "{{ mailcow_ldap_testusers }}"
-  register: _auth_test
-  changed_when: false
-  failed_when: "'auth succeeded' not in _auth_test.stdout | lower"
+  register: _sogo_login
 
-- name: Hent liste over alle mailboxe efter auth-test
+- name: Hent liste over alle mailboxe efter SOGo-login
+  # Retry: auto-provisionering kan tage et øjeblik efter login
   ansible.builtin.uri:
     url: "{{ mailcow_api_base_url }}/api/v1/get/mailbox/all"
     method: GET
@@ -230,6 +238,15 @@
     validate_certs: true
   register: _mailbox_list
   changed_when: false
+  retries: 6
+  delay: 5
+  until: >
+    _mailbox_list.json is iterable and
+    (_mailbox_list.json | selectattr('username', 'defined')
+     | selectattr('username', 'in', mailcow_ldap_testusers
+                                     | map('regex_replace', '$', '@' ~ mailcow_ldap_mail_domain)
+                                     | list)
+     | list | length) >= (mailcow_ldap_testusers | length)
 
 - name: Bekræft at testbrugere er auto-provisioneret som mailboxe
   ansible.builtin.assert:
