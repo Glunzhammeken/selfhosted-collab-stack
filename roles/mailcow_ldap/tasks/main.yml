@@ -1,0 +1,256 @@
+---
+# ──────────────────────────────────────────────
+# HENT LDAPSERVICE-ADGANGSKODE FRA AUTHENTIK
+# ──────────────────────────────────────────────
+- name: Slurp ldapservice-adgangskode fra authentik-rolle
+  ansible.builtin.slurp:
+    src: "{{ authentik_dir }}/ldap_service_pass"
+  register: _ldap_pass_raw
+  no_log: true
+
+- name: Sæt ldapservice-adgangskode som fact
+  ansible.builtin.set_fact:
+    _ldap_bind_password: "{{ _ldap_pass_raw.content | b64decode | trim }}"
+  no_log: true
+
+# ──────────────────────────────────────────────
+# MAILCOW API-NØGLE (genereres én gang, gemmes i fil)
+# ──────────────────────────────────────────────
+- name: Tjek om Mailcow API-nøgle allerede er gemt
+  ansible.builtin.stat:
+    path: "{{ mailcow_api_key_file }}"
+  register: _api_key_stat
+
+- name: Generér Mailcow API-nøgle
+  ansible.builtin.shell:
+    cmd: "openssl rand -hex 25 | tr 'a-f' 'A-F' > {{ mailcow_api_key_file }}"
+  when: not _api_key_stat.stat.exists
+  no_log: true
+  changed_when: true
+
+- name: Sæt filrettigheder på API-nøgle-filen
+  ansible.builtin.file:
+    path: "{{ mailcow_api_key_file }}"
+    mode: "0600"
+    owner: root
+    group: root
+
+- name: Slurp Mailcow API-nøgle
+  ansible.builtin.slurp:
+    src: "{{ mailcow_api_key_file }}"
+  register: _api_key_raw
+  no_log: true
+
+- name: Sæt API-nøgle som fact
+  ansible.builtin.set_fact:
+    _mailcow_api_key: "{{ _api_key_raw.content | b64decode | trim }}"
+  no_log: true
+
+- name: Læs DBROOT fra mailcow.conf
+  ansible.builtin.shell:
+    cmd: "grep ^DBROOT= {{ mailcow_dir }}/mailcow.conf | cut -d= -f2-"
+  register: _dbroot_raw
+  when: not _api_key_stat.stat.exists
+  no_log: true
+  changed_when: false
+
+- name: Insert API-nøgle i mariadb-mailcow
+  # MYSQL_PWD via env undgår at koden vises i ps. Vi sletter evt. eksisterende
+  # admin-rækker først for at sikre kun én aktiv nøgle.
+  ansible.builtin.command:
+    cmd: >
+      docker exec -e MYSQL_PWD={{ _dbroot_raw.stdout | trim }}
+      {{ mailcow_mariadb_container }}
+      mysql -u root mailcow
+      -e "DELETE FROM api WHERE username='admin';
+          INSERT INTO api (username, api_key, active, allow_from, access)
+          VALUES ('admin', '{{ _mailcow_api_key }}', 1,
+                  '{{ mailcow_api_allow_from }}', 'rw');"
+  when: not _api_key_stat.stat.exists
+  no_log: true
+  changed_when: true
+
+# ──────────────────────────────────────────────
+# OPRET MAIL-DOMÆNE I MAILCOW
+# Idempotent: GET først, POST kun hvis ikke findes
+# ──────────────────────────────────────────────
+- name: Tjek om mail-domænet allerede findes
+  ansible.builtin.uri:
+    url: "{{ mailcow_api_base_url }}/api/v1/get/domain/{{ mailcow_ldap_mail_domain }}"
+    method: GET
+    headers:
+      X-API-Key: "{{ _mailcow_api_key }}"
+      Content-Type: application/json
+    return_content: true
+    status_code: [200]
+    validate_certs: true
+  register: _domain_check
+  changed_when: false
+
+- name: Opret mail-domænet via API
+  ansible.builtin.uri:
+    url: "{{ mailcow_api_base_url }}/api/v1/add/domain"
+    method: POST
+    headers:
+      X-API-Key: "{{ _mailcow_api_key }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      domain: "{{ mailcow_ldap_mail_domain }}"
+      description: "{{ mailcow_ldap_mail_domain_description }}"
+      active: 1
+      restart_sogo: 1
+    status_code: [200]
+    validate_certs: true
+  when: _domain_check.json | length == 0
+  register: _domain_create
+  changed_when: _domain_create.status == 200
+
+# ──────────────────────────────────────────────
+# DKIM — hent og udskriv så brugeren kan tilføje i DNS
+# ──────────────────────────────────────────────
+- name: Hent DKIM-record fra Mailcow
+  ansible.builtin.uri:
+    url: "{{ mailcow_api_base_url }}/api/v1/get/dkim/{{ mailcow_ldap_mail_domain }}"
+    method: GET
+    headers:
+      X-API-Key: "{{ _mailcow_api_key }}"
+    return_content: true
+    status_code: [200]
+    validate_certs: true
+  register: _dkim_record
+  changed_when: false
+
+- name: Vis DKIM-record til DNS-konfiguration
+  ansible.builtin.debug:
+    msg: |
+      ════════════════════════════════════════════════════════════════
+      DKIM TXT-record til DNS — tilføj denne hos din DNS-udbyder:
+      Navn:  dkim._domainkey.{{ mailcow_ldap_mail_domain }}
+      Type:  TXT
+      Værdi: {{ _dkim_record.json.dkim_txt | default(_dkim_record.json) }}
+      ════════════════════════════════════════════════════════════════
+
+- name: Verificér at DKIM-record er publiceret i DNS (advarsel hvis ikke)
+  ansible.builtin.command:
+    cmd: "dig +short TXT dkim._domainkey.{{ mailcow_ldap_mail_domain }}"
+  register: _dkim_dig
+  changed_when: false
+  failed_when: false
+
+- name: Advarsel hvis DKIM-record ikke fundet i DNS endnu
+  ansible.builtin.debug:
+    msg: >
+      ADVARSEL: DKIM-record ikke fundet i DNS for {{ mailcow_ldap_mail_domain }}.
+      Tilføj TXT-recorden ovenfor og kør playbook igen for at verificere.
+  when: "'v=DKIM1' not in _dkim_dig.stdout"
+
+# ──────────────────────────────────────────────
+# VERIFICÉR LDAP-OUTPOST NÅS FRA MAILCOW-STAKKEN
+# (kræver at php-fpm er på proxy-net — sat i roles/mailcow override)
+# ──────────────────────────────────────────────
+- name: Verificér at LDAP-outposten kan nås fra php-fpm-mailcow
+  ansible.builtin.command:
+    cmd: >
+      docker exec {{ mailcow_phpfpm_container }}
+      sh -c "apk add openldap-clients > /dev/null 2>&1 &&
+             ldapsearch -x
+               -H ldap://{{ mailcow_ldap_host }}:{{ mailcow_ldap_port }}
+               -D '{{ mailcow_ldap_bind_dn }}'
+               -w '{{ _ldap_bind_password }}'
+               -b '{{ mailcow_ldap_base_dn }}'
+               '{{ mailcow_ldap_filter }}' cn"
+  register: _ldap_reach
+  no_log: true
+  changed_when: false
+  retries: 3
+  delay: 5
+  until: _ldap_reach.rc == 0
+
+- name: Bekræft at LDAP-search returnerede brugere
+  ansible.builtin.assert:
+    that: _ldap_reach.stdout_lines | select('match', '^cn:') | list | length >= 2
+    fail_msg: >
+      LDAP-search fra Mailcow-stakken returnerede for få brugere.
+      Tjek at php-fpm-mailcow er på proxy-net og at testbrugerne findes i Authentik.
+    success_msg: "LDAP-outpost nåbar fra Mailcow — bind og search virker."
+
+# ──────────────────────────────────────────────
+# KONFIGURÉR IDENTITY PROVIDER (LDAP) VIA API
+# ──────────────────────────────────────────────
+- name: Konfigurér LDAP som Identity Provider i Mailcow
+  ansible.builtin.uri:
+    url: "{{ mailcow_api_base_url }}/api/v1/edit/identity-provider/ldap"
+    method: POST
+    headers:
+      X-API-Key: "{{ _mailcow_api_key }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      authsource: ldap
+      host: "{{ mailcow_ldap_host }}"
+      port: "{{ mailcow_ldap_port }}"
+      use_ssl: "{{ mailcow_ldap_use_ssl }}"
+      use_tls: "{{ mailcow_ldap_use_tls }}"
+      base_dn: "{{ mailcow_ldap_base_dn }}"
+      username_field: "{{ mailcow_ldap_username_field }}"
+      filter: "{{ mailcow_ldap_filter }}"
+      bind_dn: "{{ mailcow_ldap_bind_dn }}"
+      bind_password: "{{ _ldap_bind_password }}"
+      attribute_field: "{{ mailcow_ldap_attribute_field }}"
+      mapper_attr_for_template: "{{ mailcow_ldap_attribute_mapping }}"
+      mapper_template_name: "{{ mailcow_ldap_attribute_mapping }}"
+      periodic_sync: "1"
+      import_users: "1"
+      sync_interval: "{{ mailcow_ldap_sync_interval }}"
+    status_code: [200]
+    validate_certs: true
+  no_log: true
+  register: _idp_config
+  changed_when: _idp_config.status == 200
+
+# ──────────────────────────────────────────────
+# VERIFIKATION — auto-provisionering via doveadm auth
+# Trigger LDAP-bind via Dovecot; mailbox auto-oprettes ved success.
+# ──────────────────────────────────────────────
+- name: Test LDAP-auth via Dovecot for hver testbruger
+  ansible.builtin.command:
+    cmd: >
+      docker exec {{ mailcow_dovecot_container }}
+      doveadm auth test
+      {{ item }}@{{ mailcow_ldap_mail_domain }}
+      {{ mailcow_ldap_testuser_password }}
+  loop: "{{ mailcow_ldap_testusers }}"
+  register: _auth_test
+  changed_when: false
+  failed_when: "'auth succeeded' not in _auth_test.stdout | lower"
+  no_log: true
+
+- name: Hent liste over alle mailboxe efter auth-test
+  ansible.builtin.uri:
+    url: "{{ mailcow_api_base_url }}/api/v1/get/mailbox/all"
+    method: GET
+    headers:
+      X-API-Key: "{{ _mailcow_api_key }}"
+    return_content: true
+    status_code: [200]
+    validate_certs: true
+  register: _mailbox_list
+  changed_when: false
+
+- name: Bekræft at testbrugere er auto-provisioneret som mailboxe
+  ansible.builtin.assert:
+    that:
+      - _mailbox_list.json | selectattr('username', 'equalto', item ~ '@' ~ mailcow_ldap_mail_domain) | list | length > 0
+    fail_msg: >
+      Mailbox for {{ item }}@{{ mailcow_ldap_mail_domain }} ikke fundet.
+      Auto-provisionering fejlede — tjek Mailcow-logs (System → Information → Logs → Crontasks).
+    success_msg: "Mailbox for {{ item }} er auto-provisioneret via LDAP."
+  loop: "{{ mailcow_ldap_testusers }}"
+
+- name: Vis ldapservice- og API-nøgle-stier til reference
+  ansible.builtin.debug:
+    msg:
+      - "ldapservice-adgangskode: {{ authentik_dir }}/ldap_service_pass"
+      - "Mailcow API-nøgle:        {{ mailcow_api_key_file }}"
+      - "Testbrugere logget ind:   {{ mailcow_ldap_testusers | map('regex_replace', '$', '@' ~ mailcow_ldap_mail_domain) | list }}"

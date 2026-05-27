@@ -1,0 +1,39 @@
+---
+# Genbrugte stier fra mailcow- og authentik-roller
+mailcow_dir: "/opt/mailcow"
+authentik_dir: "/opt/authentik"
+
+# Mail-domæne der oprettes i Mailcow
+mailcow_ldap_mail_domain: "opgavehelten.dk"
+mailcow_ldap_mail_domain_description: "Hovedomæne"
+
+# Mailcow API
+# API-nøglen genereres ved første kørsel og gemmes i denne fil
+mailcow_api_key_file: "{{ mailcow_dir }}/api_key"
+mailcow_api_base_url: "https://{{ mailcow_hostname | default('mail.opgavehelten.dk') }}"
+# IP-range der må kalde API. 0.0.0.0/0 = alle (vi rammer fra Ansible-host)
+mailcow_api_allow_from: "0.0.0.0/0"
+
+# Container-navne i Mailcow-stakken
+mailcow_mariadb_container: "mailcowdockerized-mysql-mailcow-1"
+mailcow_phpfpm_container: "mailcowdockerized-php-fpm-mailcow-1"
+mailcow_dovecot_container: "mailcowdockerized-dovecot-mailcow-1"
+
+# LDAP-bind mod Authentik-outposten
+mailcow_ldap_host: "ak-outpost-ldap-outpost"
+mailcow_ldap_port: 3389
+mailcow_ldap_use_ssl: false
+mailcow_ldap_use_tls: false
+mailcow_ldap_base_dn: "dc=opgavehelten,dc=dk"
+mailcow_ldap_bind_dn: "cn=ldapservice,ou=users,dc=opgavehelten,dc=dk"
+mailcow_ldap_username_field: "mail"
+mailcow_ldap_filter: "(objectClass=user)"
+mailcow_ldap_attribute_field: "objectClass"
+mailcow_ldap_attribute_mapping: "default"
+mailcow_ldap_sync_interval: 15
+
+# Testbrugere — bruges til at verificere auto-provisionering via IMAP-login
+mailcow_ldap_testusers:
+  - testuser1
+  - testuser2
+mailcow_ldap_testuser_password: "Andr3k012!"
