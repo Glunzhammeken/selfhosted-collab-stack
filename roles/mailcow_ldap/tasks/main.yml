@@ -151,7 +151,6 @@
                -b '{{ mailcow_ldap_base_dn }}'
                '{{ mailcow_ldap_filter }}' cn"
   register: _ldap_reach
-  no_log: true
   changed_when: false
   retries: 3
   delay: 5
