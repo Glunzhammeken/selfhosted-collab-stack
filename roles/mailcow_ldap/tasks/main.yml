@@ -1,19 +1,50 @@
 ---
 # ──────────────────────────────────────────────
-# FORUDSÆTNINGER
-# Mailcow API-nøgle skal være sat i group_vars/all/vault.yml
-# (generér først i Mailcow UI: Configuration → Access → API).
+# MAILCOW API-NØGLE
+# Ved første kørsel: pause + prompt så bruger kan paste nøglen.
+# Efterfølgende kørsler: læs fra fil.
 # ──────────────────────────────────────────────
-- name: Bekræft at mailcow_api_key er sat (forventes fra vault.yml)
-  ansible.builtin.assert:
-    that:
-      - mailcow_api_key is defined
-      - mailcow_api_key | length > 0
-    fail_msg: >
-      mailcow_api_key er ikke sat. Generér en API-nøgle i Mailcow UI
-      (Configuration → Access → API → Generate API key) og tilføj den til
-      group_vars/all/vault.yml som: mailcow_api_key: "DIN-NØGLE-HER".
-      Husk at kryptere filen med: ansible-vault encrypt group_vars/all/vault.yml.
+- name: Tjek om Mailcow API-nøgle allerede er gemt
+  ansible.builtin.stat:
+    path: "{{ mailcow_api_key_file }}"
+  register: _api_key_stat
+
+- name: Prompt for Mailcow API-nøgle (kun første gang)
+  ansible.builtin.pause:
+    prompt: |
+
+      ════════════════════════════════════════════════════════════════
+      MAILCOW API-NØGLE PÅKRÆVET
+
+      1. Åbn:    {{ mailcow_api_base_url }}
+      2. Gå til: Configuration → Access → API
+      3. Klik:   "Generate API key" (admin, read-write)
+      4. Kopiér nøglen og paste den her, tryk Enter:
+      ════════════════════════════════════════════════════════════════
+  register: _api_key_input
+  when: not _api_key_stat.stat.exists
+  no_log: true
+
+- name: Gem Mailcow API-nøgle i fil
+  ansible.builtin.copy:
+    content: "{{ _api_key_input.user_input | trim }}"
+    dest: "{{ mailcow_api_key_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when: not _api_key_stat.stat.exists
+  no_log: true
+
+- name: Slurp Mailcow API-nøgle fra fil
+  ansible.builtin.slurp:
+    src: "{{ mailcow_api_key_file }}"
+  register: _api_key_raw
+  no_log: true
+
+- name: Sæt API-nøgle som fact
+  ansible.builtin.set_fact:
+    _mailcow_api_key: "{{ _api_key_raw.content | b64decode | trim }}"
+  no_log: true
 
 # ──────────────────────────────────────────────
 # HENT LDAPSERVICE-ADGANGSKODE FRA AUTHENTIK
@@ -38,7 +69,7 @@
     url: "{{ mailcow_api_base_url }}/api/v1/get/domain/{{ mailcow_ldap_mail_domain }}"
     method: GET
     headers:
-      X-API-Key: "{{ mailcow_api_key }}"
+      X-API-Key: "{{ _mailcow_api_key }}"
       Content-Type: application/json
     return_content: true
     status_code: [200]
@@ -51,7 +82,7 @@
     url: "{{ mailcow_api_base_url }}/api/v1/add/domain"
     method: POST
     headers:
-      X-API-Key: "{{ mailcow_api_key }}"
+      X-API-Key: "{{ _mailcow_api_key }}"
       Content-Type: application/json
     body_format: json
     body:
@@ -73,7 +104,7 @@
     url: "{{ mailcow_api_base_url }}/api/v1/get/dkim/{{ mailcow_ldap_mail_domain }}"
     method: GET
     headers:
-      X-API-Key: "{{ mailcow_api_key }}"
+      X-API-Key: "{{ _mailcow_api_key }}"
     return_content: true
     status_code: [200]
     validate_certs: true
@@ -142,7 +173,7 @@
     url: "{{ mailcow_api_base_url }}/api/v1/edit/identity-provider/ldap"
     method: POST
     headers:
-      X-API-Key: "{{ mailcow_api_key }}"
+      X-API-Key: "{{ _mailcow_api_key }}"
       Content-Type: application/json
     body_format: json
     body:
@@ -190,7 +221,7 @@
     url: "{{ mailcow_api_base_url }}/api/v1/get/mailbox/all"
     method: GET
     headers:
-      X-API-Key: "{{ mailcow_api_key }}"
+      X-API-Key: "{{ _mailcow_api_key }}"
     return_content: true
     status_code: [200]
     validate_certs: true
@@ -227,23 +258,28 @@
       --env MYSQL_PWD={{ _dbroot_revoke.stdout | trim }}
       {{ mailcow_mariadb_service }}
       mysql -u root mailcow
-      -e "DELETE FROM api WHERE api_key='{{ mailcow_api_key }}';"
+      -e "DELETE FROM api WHERE api_key='{{ _mailcow_api_key }}';"
     chdir: "{{ mailcow_dir }}"
   when: mailcow_ldap_revoke_api_key | bool
   changed_when: true
+
+- name: Slet lokal API-nøgle-fil efter revoke
+  ansible.builtin.file:
+    path: "{{ mailcow_api_key_file }}"
+    state: absent
+  when: mailcow_ldap_revoke_api_key | bool
 
 - name: Påmindelse om API-nøgle hvis ikke revokeret automatisk
   ansible.builtin.debug:
     msg: |
       ════════════════════════════════════════════════════════════════
-      API-nøgle er STADIG AKTIV i Mailcow.
-      Slet manuelt: https://{{ mailcow_api_base_url | regex_replace('^https?://', '') }}
-        → Configuration → Access → API → Delete
+      API-nøgle er STADIG AKTIV i Mailcow og gemt i {{ mailcow_api_key_file }}.
+      Slet manuelt: {{ mailcow_api_base_url }} → Configuration → Access → API
       Eller kør playbook igen med: -e mailcow_ldap_revoke_api_key=true
       ════════════════════════════════════════════════════════════════
   when: not (mailcow_ldap_revoke_api_key | bool)
 
 - name: Bekræftelse efter revoke
   ansible.builtin.debug:
-    msg: "Mailcow API-nøgle er fjernet fra DB. Generér en ny i UI hvis du skal re-køre playbooken."
+    msg: "Mailcow API-nøgle er fjernet fra DB og fil. Næste kørsel prompter for ny nøgle."
   when: mailcow_ldap_revoke_api_key | bool

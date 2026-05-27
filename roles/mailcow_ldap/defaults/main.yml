@@ -8,8 +8,10 @@ mailcow_ldap_mail_domain: "opgavehelten.dk"
 mailcow_ldap_mail_domain_description: "Hovedomæne"
 
 # Mailcow API
-# mailcow_api_key skal sættes i group_vars/all/vault.yml (ansible-vault).
-# Generér først i Mailcow UI: Configuration → Access → API → Generate API key.
+# API-nøglen genereres manuelt i Mailcow UI (Configuration → Access → API)
+# og indtastes via interaktiv prompt ved første kørsel. Gemmes derefter
+# i mailcow_api_key_file så efterfølgende kørsler bare læser den.
+mailcow_api_key_file: "{{ mailcow_dir }}/api_key"
 mailcow_api_base_url: "https://{{ mailcow_hostname | default('mail.opgavehelten.dk') }}"
 
 # Sæt til true for automatisk at fjerne API-nøglen fra mailcow's DB
