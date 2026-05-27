@@ -8,16 +8,17 @@ mailcow_ldap_mail_domain: "opgavehelten.dk"
 mailcow_ldap_mail_domain_description: "Hovedomæne"
 
 # Mailcow API
-# API-nøglen genereres ved første kørsel og gemmes i denne fil
-mailcow_api_key_file: "{{ mailcow_dir }}/api_key"
+# mailcow_api_key skal sættes i group_vars/all/vault.yml (ansible-vault).
+# Generér først i Mailcow UI: Configuration → Access → API → Generate API key.
 mailcow_api_base_url: "https://{{ mailcow_hostname | default('mail.opgavehelten.dk') }}"
-# IP-range der må kalde API. 0.0.0.0/0 = alle (vi rammer fra Ansible-host)
-mailcow_api_allow_from: "0.0.0.0/0"
 
-# Container-navne i Mailcow-stakken
-mailcow_mariadb_container: "mailcowdockerized-mysql-mailcow-1"
-mailcow_phpfpm_container: "mailcowdockerized-php-fpm-mailcow-1"
-mailcow_dovecot_container: "mailcowdockerized-dovecot-mailcow-1"
+# Sæt til true for automatisk at fjerne API-nøglen fra mailcow's DB
+# efter en succesfuld kørsel. Default: false så playbooken kan re-køres.
+# Kør evt. én sidste gang med -e mailcow_ldap_revoke_api_key=true når alt virker.
+mailcow_ldap_revoke_api_key: false
+
+# Container-navn til DB-revoke (bruges kun hvis revoke = true)
+mailcow_mariadb_service: "mysql-mailcow"
 
 # LDAP-bind mod Authentik-outposten
 mailcow_ldap_host: "ak-outpost-ldap-outpost"
@@ -31,6 +32,10 @@ mailcow_ldap_filter: "(objectClass=user)"
 mailcow_ldap_attribute_field: "objectClass"
 mailcow_ldap_attribute_mapping: "default"
 mailcow_ldap_sync_interval: 15
+
+# Container-navn for verifikations-tasks
+mailcow_phpfpm_container: "mailcowdockerized-php-fpm-mailcow-1"
+mailcow_dovecot_container: "mailcowdockerized-dovecot-mailcow-1"
 
 # Testbrugere — bruges til at verificere auto-provisionering via IMAP-login
 mailcow_ldap_testusers:
