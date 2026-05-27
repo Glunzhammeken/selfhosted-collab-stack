@@ -239,19 +239,20 @@
     return_content: true
     status_code: [200]
     validate_certs: true
-  register: _idp_verify
+  register: _idp_verify_after
   changed_when: false
   when: not _idp_already_set | bool
 
-- name: Bekræft at IdP-config nu er sat korrekt
+- name: Bekræft at IdP-config nu er sat korrekt (kun efter manuel UI-save)
   ansible.builtin.assert:
     that:
-      - _idp_verify.json.authsource | default('') == 'ldap'
-      - _idp_verify.json.host | default('') == mailcow_ldap_host
-      - _idp_verify.json.basedn | default('') == mailcow_ldap_base_dn
-      - _idp_verify.json.binddn | default('') == mailcow_ldap_bind_dn
-    fail_msg: "IdP-config matcher stadig ikke. Faktisk: {{ _idp_verify.json }}"
+      - _idp_verify_after.json.authsource | default('') == 'ldap'
+      - _idp_verify_after.json.host | default('') == mailcow_ldap_host
+      - _idp_verify_after.json.basedn | default('') == mailcow_ldap_base_dn
+      - _idp_verify_after.json.binddn | default('') == mailcow_ldap_bind_dn
+    fail_msg: "IdP-config matcher stadig ikke. Faktisk: {{ _idp_verify_after.json }}"
     success_msg: "IdP-config verificeret i Mailcow (host, basedn, binddn matcher)."
+  when: not _idp_already_set | bool
 
 - name: Vis næste skridt — manuel verifikation af auto-provisionering
   ansible.builtin.debug:
