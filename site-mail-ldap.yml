@@ -1,0 +1,11 @@
+---
+# Bilag I: Mailcow LDAP-integration
+# Kørsel: ansible-playbook site-mail-ldap.yml
+#
+# Forudsætning: site-apps.yml og site-ldap.yml skal være kørt først,
+# så Mailcow er oppe og Authentik LDAP-outposten kører med testbrugere.
+- name: Konfigurér Mailcow med Authentik LDAP-outpost
+  hosts: server
+  become: true
+  roles:
+    - mailcow_ldap
