@@ -140,16 +140,16 @@
 # (kræver at php-fpm er på proxy-net — sat i roles/mailcow override)
 # ──────────────────────────────────────────────
 - name: Verificér at LDAP-outposten kan nås fra php-fpm-mailcow
-  ansible.builtin.command:
-    cmd: >
-      docker exec {{ mailcow_phpfpm_container }}
-      sh -c "apk add openldap-clients > /dev/null 2>&1 &&
-             ldapsearch -x
-               -H ldap://{{ mailcow_ldap_host }}:{{ mailcow_ldap_port }}
-               -D '{{ mailcow_ldap_bind_dn }}'
-               -w '{{ _ldap_bind_password }}'
-               -b '{{ mailcow_ldap_base_dn }}'
-               '{{ mailcow_ldap_filter }}' cn"
+  ansible.builtin.shell:
+    cmd: |
+      docker exec {{ mailcow_phpfpm_container }} sh -c \
+        "apk add openldap-clients > /dev/null 2>&1 && \
+         ldapsearch -x \
+           -H ldap://{{ mailcow_ldap_host }}:{{ mailcow_ldap_port }} \
+           -D '{{ mailcow_ldap_bind_dn }}' \
+           -w '{{ _ldap_bind_password }}' \
+           -b '{{ mailcow_ldap_base_dn }}' \
+           '{{ mailcow_ldap_filter }}' cn"
   register: _ldap_reach
   changed_when: false
   retries: 3
