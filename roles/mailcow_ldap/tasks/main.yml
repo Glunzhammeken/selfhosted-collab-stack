@@ -51,23 +51,24 @@
     cmd: "grep ^DBROOT= {{ mailcow_dir }}/mailcow.conf | cut -d= -f2-"
   register: _dbroot_raw
   when: not _api_key_stat.stat.exists
-  no_log: true
   changed_when: false
 
+# Bruger 'docker compose exec' fra mailcow_dir så vi rammer service-navnet
+# direkte (uafhængigt af container-navnekonvention). --env passer MYSQL_PWD
+# ind i containeren så adgangskoden ikke ender i mysql's ps-output.
 - name: Insert API-nøgle i mariadb-mailcow
-  # MYSQL_PWD via env undgår at koden vises i ps. Vi sletter evt. eksisterende
-  # admin-rækker først for at sikre kun én aktiv nøgle.
   ansible.builtin.command:
     cmd: >
-      docker exec -e MYSQL_PWD={{ _dbroot_raw.stdout | trim }}
-      {{ mailcow_mariadb_container }}
+      docker compose exec -T
+      --env MYSQL_PWD={{ _dbroot_raw.stdout | trim }}
+      mysql-mailcow
       mysql -u root mailcow
       -e "DELETE FROM api WHERE username='admin';
           INSERT INTO api (username, api_key, active, allow_from, access)
           VALUES ('admin', '{{ _mailcow_api_key }}', 1,
                   '{{ mailcow_api_allow_from }}', 'rw');"
+    chdir: "{{ mailcow_dir }}"
   when: not _api_key_stat.stat.exists
-  no_log: true
   changed_when: true
 
 # ──────────────────────────────────────────────
