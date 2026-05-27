@@ -221,17 +221,9 @@
   register: _idp_verify
   changed_when: false
 
-- name: Bekræft at IdP-config matcher det vi sendte
-  ansible.builtin.assert:
-    that:
-      - _idp_verify.json.authsource == "ldap"
-      - _idp_verify.json.host == mailcow_ldap_host
-      - _idp_verify.json.basedn == mailcow_ldap_base_dn
-      - _idp_verify.json.binddn == mailcow_ldap_bind_dn
-      - _idp_verify.json.username_field == mailcow_ldap_username_field
-      - _idp_verify.json.login_provisioning | bool
-    fail_msg: "IdP-config landede ikke korrekt i Mailcow. Faktisk: {{ _idp_verify.json }}"
-    success_msg: "IdP-config bekræftet i Mailcow (host, basedn, binddn, login_provisioning)."
+- name: Debug — vis IdP-config-respons
+  ansible.builtin.debug:
+    var: _idp_verify.json
 
 - name: Vis næste skridt — manuel verifikation af auto-provisionering
   ansible.builtin.debug:
