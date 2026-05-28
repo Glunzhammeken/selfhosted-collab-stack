@@ -79,13 +79,15 @@
     port: 80
     timeout: 30
 
-# Verifikation: bootstrap svarer
+# Verifikation: bootstrap svarer (kun første gang — ved re-runs er app-vhosts
+# allerede i conf.d/ og redirecter port 80 → 443 mod backends der ikke er oppe endnu)
 - name: Test at Nginx svarer i bootstrap-tilstand
   ansible.builtin.uri:
     url: "http://{{ item }}.{{ nginx_domain }}"
     status_code: 200
   changed_when: false
   loop: "{{ nginx_subdomains }}"
+  when: not cert_stat.stat.exists
 
 # Certifikater
 - name: Tjek om TLS-certifikater allerede er udstedt
