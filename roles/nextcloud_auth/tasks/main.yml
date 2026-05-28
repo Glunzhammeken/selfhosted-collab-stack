@@ -1,0 +1,418 @@
+---
+# Bilag J: Nextcloud OIDC + LDAP-integration
+#
+# OIDC håndterer login-flowet (bruger → Authentik → Nextcloud).
+# LDAP håndterer brugerkataloget (synkroniserer brugere/grupper løbende,
+# muliggør fildeling med brugere der endnu ikke har logget ind).
+#
+# Rækkefølge kritisk: LDAP konfigureres og verificeres FØR OIDC tilføjes,
+# så der ikke opstår dubletter (OIDC's sub matcher LDAP's uid).
+
+# ──────────────────────────────────────────────
+# OIDC CREDENTIALS (pre-genererede, stabile)
+# Samme mønster som ldap_service_pass i authentik_ldap-rollen.
+# ──────────────────────────────────────────────
+- name: Tjek om OIDC client_id allerede er genereret
+  ansible.builtin.stat:
+    path: "{{ authentik_dir }}/nextcloud_oidc_client_id"
+  register: _oidc_id_stat
+
+- name: Generér OIDC client_id
+  ansible.builtin.shell:
+    cmd: "openssl rand -hex 16 > {{ authentik_dir }}/nextcloud_oidc_client_id"
+  when: not _oidc_id_stat.stat.exists
+  changed_when: true
+  no_log: true
+
+- name: Sæt filrettigheder på client_id-fil
+  ansible.builtin.file:
+    path: "{{ authentik_dir }}/nextcloud_oidc_client_id"
+    mode: "0600"
+    owner: root
+    group: root
+
+- name: Tjek om OIDC client_secret allerede er genereret
+  ansible.builtin.stat:
+    path: "{{ authentik_dir }}/nextcloud_oidc_client_secret"
+  register: _oidc_secret_stat
+
+- name: Generér OIDC client_secret
+  ansible.builtin.shell:
+    cmd: "openssl rand -base64 32 | tr -d '\\n=/+' | head -c 43 > {{ authentik_dir }}/nextcloud_oidc_client_secret"
+  when: not _oidc_secret_stat.stat.exists
+  changed_when: true
+  no_log: true
+
+- name: Sæt filrettigheder på client_secret-fil
+  ansible.builtin.file:
+    path: "{{ authentik_dir }}/nextcloud_oidc_client_secret"
+    mode: "0600"
+    owner: root
+    group: root
+
+- name: Slurp OIDC client_id
+  ansible.builtin.slurp:
+    src: "{{ authentik_dir }}/nextcloud_oidc_client_id"
+  register: _oidc_id_raw
+  no_log: true
+
+- name: Slurp OIDC client_secret
+  ansible.builtin.slurp:
+    src: "{{ authentik_dir }}/nextcloud_oidc_client_secret"
+  register: _oidc_secret_raw
+  no_log: true
+
+- name: Sæt OIDC credentials som facts
+  ansible.builtin.set_fact:
+    _oidc_client_id: "{{ _oidc_id_raw.content | b64decode | trim }}"
+    _oidc_client_secret: "{{ _oidc_secret_raw.content | b64decode | trim }}"
+  no_log: true
+
+# ──────────────────────────────────────────────
+# INJECT CREDENTIALS I AUTHENTIK .ENV
+# ──────────────────────────────────────────────
+- name: Tilføj AUTHENTIK_NEXTCLOUD_OIDC_CLIENT_ID til .env
+  ansible.builtin.lineinfile:
+    path: "{{ authentik_dir }}/.env"
+    regexp: '^AUTHENTIK_NEXTCLOUD_OIDC_CLIENT_ID='
+    line: "AUTHENTIK_NEXTCLOUD_OIDC_CLIENT_ID={{ _oidc_client_id }}"
+  no_log: true
+  register: _env_id_updated
+
+- name: Tilføj AUTHENTIK_NEXTCLOUD_OIDC_CLIENT_SECRET til .env
+  ansible.builtin.lineinfile:
+    path: "{{ authentik_dir }}/.env"
+    regexp: '^AUTHENTIK_NEXTCLOUD_OIDC_CLIENT_SECRET='
+    line: "AUTHENTIK_NEXTCLOUD_OIDC_CLIENT_SECRET={{ _oidc_client_secret }}"
+  no_log: true
+  register: _env_secret_updated
+
+- name: Sæt fact — om .env er ændret
+  ansible.builtin.set_fact:
+    _env_updated: "{{ _env_id_updated.changed or _env_secret_updated.changed }}"
+
+# ──────────────────────────────────────────────
+# OIDC BLUEPRINT
+# ──────────────────────────────────────────────
+- name: Læg OIDC-blueprint ud
+  ansible.builtin.template:
+    src: oidc-blueprint.yaml.j2
+    dest: "{{ authentik_dir }}/blueprints/nextcloud-oidc-setup.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+  register: _blueprint_changed
+
+# ──────────────────────────────────────────────
+# WORKER RESTART
+# ──────────────────────────────────────────────
+- name: Genskab Authentik worker (ny env-variabel)
+  ansible.builtin.command:
+    cmd: docker compose up -d --no-deps worker
+    chdir: "{{ authentik_dir }}"
+  when: _env_updated
+  changed_when: true
+
+- name: Genstart Authentik worker (blueprint opdateret)
+  ansible.builtin.command:
+    cmd: docker compose restart worker
+    chdir: "{{ authentik_dir }}"
+  when: _blueprint_changed.changed and not _env_updated
+  changed_when: true
+
+# ──────────────────────────────────────────────
+# VENT PÅ AT OIDC DISCOVERY ENDPOINT ER KLAR
+# Bekræfter at blueprint er importeret og provider er aktiv.
+# ──────────────────────────────────────────────
+- name: Vent på at Nextcloud OIDC discovery endpoint er klar
+  ansible.builtin.uri:
+    url: "https://{{ authentik_domain }}/application/o/nextcloud/.well-known/openid-configuration"
+    status_code: 200
+    validate_certs: true
+  register: _oidc_discovery
+  retries: 30
+  delay: 10
+  until: _oidc_discovery.status == 200
+  changed_when: false
+
+# ──────────────────────────────────────────────
+# NEXTCLOUD SYSTEM-KONFIGURATION
+# ──────────────────────────────────────────────
+- name: Tillad lokale/interne server-adresser i Nextcloud
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - --user
+      - www-data
+      - nextcloud-aio-nextcloud
+      - php
+      - occ
+      - config:system:set
+      - allow_local_remote_servers
+      - --value=true
+  changed_when: false
+
+- name: Aktivér LDAP-app i Nextcloud
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - --user
+      - www-data
+      - nextcloud-aio-nextcloud
+      - php
+      - occ
+      - app:enable
+      - user_ldap
+  register: _ldap_app
+  changed_when: "'already' not in _ldap_app.stdout"
+  failed_when: _ldap_app.rc != 0
+
+- name: Aktivér OIDC-app i Nextcloud
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - --user
+      - www-data
+      - nextcloud-aio-nextcloud
+      - php
+      - occ
+      - app:enable
+      - user_oidc
+  register: _oidc_app
+  changed_when: "'already' not in _oidc_app.stdout"
+  failed_when: _oidc_app.rc != 0
+
+# ──────────────────────────────────────────────
+# DOCKER BRIDGE GATEWAY (LDAP-host for nextcloud-aio-nextcloud)
+# AIO isolerer applikations-containeren — den kan ikke sættes på proxy-net
+# permanent. Docker bridge-gatewayen (typisk 172.17.0.1) nås altid og
+# overlever container-genskabelse og genstarter.
+# ──────────────────────────────────────────────
+- name: Find Docker bridge-gateway IP
+  ansible.builtin.command:
+    argv:
+      - docker
+      - network
+      - inspect
+      - bridge
+      - "--format"
+      - "{{ '{{' }}(index .IPAM.Config 0).Gateway{{ '}}' }}"
+  register: _bridge_gw
+  changed_when: false
+
+- name: Sæt bridge-gateway som fact
+  ansible.builtin.set_fact:
+    _ldap_host: "{{ _bridge_gw.stdout | trim }}"
+
+# ──────────────────────────────────────────────
+# LDAP-KONFIGURATION
+# Konfigureres FØR OIDC-provider tilføjes til Nextcloud for at undgå
+# dublet-brugere (OIDC sub=user_uuid matcher LDAP uid=user_uuid).
+# ──────────────────────────────────────────────
+- name: Slurp ldapservice-adgangskode
+  ansible.builtin.slurp:
+    src: "{{ authentik_dir }}/ldap_service_pass"
+  register: _ldap_pass_raw
+  no_log: true
+
+- name: Sæt ldapservice-adgangskode som fact
+  ansible.builtin.set_fact:
+    _ldap_bind_password: "{{ _ldap_pass_raw.content | b64decode | trim }}"
+  no_log: true
+
+- name: Tjek om LDAP-konfiguration s01 allerede eksisterer
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - --user
+      - www-data
+      - nextcloud-aio-nextcloud
+      - php
+      - occ
+      - ldap:show-config
+      - s01
+  register: _ldap_config_exists
+  changed_when: false
+  failed_when: false
+
+- name: Opret tom LDAP-konfiguration (første gang)
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - --user
+      - www-data
+      - nextcloud-aio-nextcloud
+      - php
+      - occ
+      - ldap:create-empty-config
+  when: _ldap_config_exists.rc != 0
+  changed_when: true
+
+- name: Konfigurér LDAP — forbindelsesparametre
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - --user
+      - www-data
+      - nextcloud-aio-nextcloud
+      - php
+      - occ
+      - ldap:set-config
+      - s01
+      - "{{ item.key }}"
+      - "{{ item.value }}"
+  loop:
+    - { key: ldapHost,       value: "{{ _ldap_host }}" }
+    - { key: ldapPort,       value: "{{ nextcloud_ldap_port }}" }
+    - { key: ldapAgentName,  value: "{{ nextcloud_ldap_bind_dn }}" }
+    - { key: ldapBase,       value: "{{ nextcloud_ldap_base_dn }}" }
+    - { key: ldapBaseUsers,  value: "{{ nextcloud_ldap_base_users }}" }
+    - { key: ldapBaseGroups, value: "{{ nextcloud_ldap_base_groups }}" }
+    - { key: ldapTLS,        value: "0" }
+  changed_when: false
+
+- name: Konfigurér LDAP — adgangskode
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - --user
+      - www-data
+      - nextcloud-aio-nextcloud
+      - php
+      - occ
+      - ldap:set-config
+      - s01
+      - ldapAgentPassword
+      - "{{ _ldap_bind_password }}"
+  changed_when: false
+  no_log: true
+
+- name: Konfigurér LDAP — filtre og attributter
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - --user
+      - www-data
+      - nextcloud-aio-nextcloud
+      - php
+      - occ
+      - ldap:set-config
+      - s01
+      - "{{ item.key }}"
+      - "{{ item.value }}"
+  loop:
+    - { key: ldapUserFilter,           value: "(objectClass=user)" }
+    - { key: ldapLoginFilter,          value: "(&(objectClass=user)(|(cn=%uid)(mail=%uid)))" }
+    - { key: ldapGroupFilter,          value: "(objectClass=group)" }
+    - { key: ldapUserDisplayName,      value: "name" }
+    - { key: ldapGroupDisplayName,     value: "cn" }
+    - { key: ldapEmailAttribute,       value: "mail" }
+    - { key: ldapExpertUsernameAttr,   value: "uid" }
+    - { key: ldapExpertUUIDUserAttr,   value: "uid" }
+    - { key: ldapExpertUUIDGroupAttr,  value: "gidNumber" }
+    - { key: ldapGroupMemberAssocAttr, value: "member" }
+  changed_when: false
+
+- name: Aktivér LDAP-konfiguration
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - --user
+      - www-data
+      - nextcloud-aio-nextcloud
+      - php
+      - occ
+      - ldap:set-config
+      - s01
+      - ldapConfigurationActive
+      - "1"
+  changed_when: false
+
+- name: Test LDAP-konfiguration
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - --user
+      - www-data
+      - nextcloud-aio-nextcloud
+      - php
+      - occ
+      - ldap:test-config
+      - s01
+  register: _ldap_test
+  changed_when: false
+
+- name: Bekræft at LDAP-test lykkedes
+  ansible.builtin.assert:
+    that: "'established' in _ldap_test.stdout or 'successfully' in _ldap_test.stdout"
+    fail_msg: "LDAP-test fejlede: {{ _ldap_test.stdout }}"
+    success_msg: "LDAP-forbindelse til Authentik-outpost verificeret."
+
+# ──────────────────────────────────────────────
+# OIDC-PROVIDER (tilføjes EFTER LDAP er verificeret)
+# ──────────────────────────────────────────────
+- name: Konfigurér OIDC-provider i Nextcloud
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - --user
+      - www-data
+      - nextcloud-aio-nextcloud
+      - php
+      - occ
+      - user_oidc:provider
+      - authentik
+      - "--clientid={{ _oidc_client_id }}"
+      - "--clientsecret={{ _oidc_client_secret }}"
+      - "--discoveryuri=https://{{ authentik_domain }}/application/o/nextcloud/.well-known/openid-configuration"
+      - "--scope=openid email profile"
+      - "--unique-uid=0"
+      - "--mapping-uid=sub"
+      - "--mapping-displayname=name"
+      - "--mapping-email=email"
+  changed_when: false
+  no_log: true
+
+# ──────────────────────────────────────────────
+# VERIFIKATION
+# ──────────────────────────────────────────────
+- name: Vis manuelle verifikationstrin
+  ansible.builtin.debug:
+    msg: |
+      ════════════════════════════════════════════════════════════════
+      NEXTCLOUD OIDC + LDAP INTEGRATION KLAR — VERIFICÉR MANUELT
+
+      1. LDAP-brugere synlige FØR OIDC-login (admin-browser):
+           URL:  https://{{ nextcloud_domain }}/
+           Gå til: Settings → Administration → Users
+           Forventet: testuser1, testuser2 listet med LDAP-markering
+
+      2. Test OIDC-login (privat browser):
+           URL:  https://{{ nextcloud_domain }}/
+           Klik "Log ind med authentik" → log ind som testuser1
+           Forventet: dashboard åbner, ingen dublet-bruger i Users-listen
+
+      3. Test back-channel logout:
+           Log ud af https://{{ authentik_domain }}
+           Naviger til Nextcloud-fanen
+           Forventet: omdirigeres til login
+
+      4. Test fildeling FØR første login:
+           Del en fil med testuser2 (som admin)
+           Log derefter ind som testuser2 via OIDC
+           Forventet: filen er allerede delt
+
+      Nødadgang (admin uden OIDC):
+           https://{{ nextcloud_domain }}/login?direct=1
+      ════════════════════════════════════════════════════════════════

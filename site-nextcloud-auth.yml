@@ -1,0 +1,12 @@
+---
+# Bilag J: Nextcloud OIDC + LDAP-integration
+# Kørsel: ansible-playbook site-nextcloud-auth.yml
+#
+# Forudsætninger:
+#   site-apps.yml:  Authentik, Nextcloud AIO og LDAP-outpost kørende
+#   site-ldap.yml:  ldap_service_pass genereret og outpost verificeret
+- name: Konfigurér Nextcloud med Authentik OIDC og LDAP
+  hosts: server
+  become: true
+  roles:
+    - nextcloud_auth

@@ -1,0 +1,13 @@
+---
+# Genbrugte stier fra authentik- og nextcloud-roller
+authentik_dir: "/opt/authentik"
+authentik_domain: "auth.opgavehelten.dk"
+nextcloud_domain: "cloud.opgavehelten.dk"
+
+# LDAP-forbindelsesparametre
+# Host auto-discovers fra Docker bridge-gateway (172.17.0.1 typisk)
+nextcloud_ldap_port: 389
+nextcloud_ldap_base_dn: "dc=opgavehelten,dc=dk"
+nextcloud_ldap_bind_dn: "cn=ldapservice,ou=users,dc=opgavehelten,dc=dk"
+nextcloud_ldap_base_users: "ou=users,dc=opgavehelten,dc=dk"
+nextcloud_ldap_base_groups: "ou=groups,dc=opgavehelten,dc=dk"
