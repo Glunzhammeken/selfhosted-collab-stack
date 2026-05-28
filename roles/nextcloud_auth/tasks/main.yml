@@ -351,6 +351,9 @@
       - s01
   register: _ldap_test
   changed_when: false
+  retries: 5
+  delay: 10
+  until: _ldap_test.rc == 0
 
 - name: Bekræft at LDAP-test lykkedes
   ansible.builtin.assert:
