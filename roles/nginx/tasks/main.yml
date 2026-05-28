@@ -66,6 +66,12 @@
     group: root
     mode: "0644"
 
+# Tjek certifikater tidligt — bruges til at styre bootstrap-test og certbot-kørsel
+- name: Tjek om TLS-certifikater allerede er udstedt
+  ansible.builtin.stat:
+    path: "{{ nginx_proxy_dir }}/certbot/conf/live/{{ nginx_subdomains[0] }}.{{ nginx_domain }}/fullchain.pem"
+  register: cert_stat
+
 # Start Nginx i bootstrap-tilstand
 - name: Start Nginx-container i bootstrap-tilstand
   ansible.builtin.command:
@@ -90,10 +96,6 @@
   when: not cert_stat.stat.exists
 
 # Certifikater
-- name: Tjek om TLS-certifikater allerede er udstedt
-  ansible.builtin.stat:
-    path: "{{ nginx_proxy_dir }}/certbot/conf/live/{{ nginx_subdomains[0] }}.{{ nginx_domain }}/fullchain.pem"
-  register: cert_stat
 
 - name: Udsted TLS-certifikater via Certbot (kun første gang)
   ansible.builtin.command:
