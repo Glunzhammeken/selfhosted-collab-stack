@@ -69,30 +69,9 @@
   no_log: true
 
 # ──────────────────────────────────────────────
-# INJECT CREDENTIALS I AUTHENTIK .ENV
-# ──────────────────────────────────────────────
-- name: Tilføj AUTHENTIK_NEXTCLOUD_OIDC_CLIENT_ID til .env
-  ansible.builtin.lineinfile:
-    path: "{{ authentik_dir }}/.env"
-    regexp: '^AUTHENTIK_NEXTCLOUD_OIDC_CLIENT_ID='
-    line: "AUTHENTIK_NEXTCLOUD_OIDC_CLIENT_ID={{ _oidc_client_id }}"
-  no_log: true
-  register: _env_id_updated
-
-- name: Tilføj AUTHENTIK_NEXTCLOUD_OIDC_CLIENT_SECRET til .env
-  ansible.builtin.lineinfile:
-    path: "{{ authentik_dir }}/.env"
-    regexp: '^AUTHENTIK_NEXTCLOUD_OIDC_CLIENT_SECRET='
-    line: "AUTHENTIK_NEXTCLOUD_OIDC_CLIENT_SECRET={{ _oidc_client_secret }}"
-  no_log: true
-  register: _env_secret_updated
-
-- name: Sæt fact — om .env er ændret
-  ansible.builtin.set_fact:
-    _env_updated: "{{ _env_id_updated.changed or _env_secret_updated.changed }}"
-
-# ──────────────────────────────────────────────
 # OIDC BLUEPRINT
+# Credentials templates direkte ind — ingen !Env-afhængighed af worker-env.
+# Fil får 0600 fordi den indeholder client_secret i klartekst.
 # ──────────────────────────────────────────────
 - name: Læg OIDC-blueprint ud
   ansible.builtin.template:
@@ -100,24 +79,17 @@
     dest: "{{ authentik_dir }}/blueprints/nextcloud-oidc-setup.yaml"
     owner: root
     group: root
-    mode: "0644"
+    mode: "0600"
   register: _blueprint_changed
 
 # ──────────────────────────────────────────────
 # WORKER RESTART
 # ──────────────────────────────────────────────
-- name: Genskab Authentik worker (ny env-variabel)
-  ansible.builtin.command:
-    cmd: docker compose up -d --no-deps worker
-    chdir: "{{ authentik_dir }}"
-  when: _env_updated
-  changed_when: true
-
 - name: Genstart Authentik worker (blueprint opdateret)
   ansible.builtin.command:
     cmd: docker compose restart worker
     chdir: "{{ authentik_dir }}"
-  when: _blueprint_changed.changed and not _env_updated
+  when: _blueprint_changed.changed
   changed_when: true
 
 # ──────────────────────────────────────────────

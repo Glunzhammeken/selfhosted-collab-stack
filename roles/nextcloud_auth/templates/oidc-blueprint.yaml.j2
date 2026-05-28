@@ -13,8 +13,8 @@ entries:
       authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-explicit-consent]]
       invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
       client_type: confidential
-      client_id: !Env [AUTHENTIK_NEXTCLOUD_OIDC_CLIENT_ID, ""]
-      client_secret: !Env [AUTHENTIK_NEXTCLOUD_OIDC_CLIENT_SECRET, ""]
+      client_id: "{{ _oidc_client_id }}"
+      client_secret: "{{ _oidc_client_secret }}"
       redirect_uris:
         - url: "https://{{ nextcloud_domain }}/apps/user_oidc/code"
           matching_mode: strict
