@@ -1,5 +1,16 @@
 ---
-- name: Klargør og konfigurer selfhosted collab stack
+# Master playbook — deployer hele selfhosted-stakken i korrekt rækkefølge
+#
+# Kørsel (komplet): ansible-playbook site.yml
+# Kørsel (enkelt bilag): ansible-playbook playbooks/<navn>.yml
+#
+# Rækkefølge og afhængigheder:
+#   Fase 1 (infrastruktur): baseline → hardening → docker → nginx
+#   Fase 2 (apps):          Authentik, Mailcow, Nextcloud AIO (bilag E, F, G)
+#   Fase 3 (LDAP-outpost):  Authentik LDAP-outpost + testbrugere (bilag H)
+#   Fase 4 (integrationer): Mailcow LDAP (bilag I), Nextcloud OIDC+LDAP (bilag J)
+
+- name: Fase 1 — infrastruktur
   hosts: server
   become: true
   roles:
@@ -7,3 +18,8 @@
     - hardening
     - docker
     - nginx
+
+- import_playbook: playbooks/apps.yml
+- import_playbook: playbooks/ldap.yml
+- import_playbook: playbooks/mail-ldap.yml
+- import_playbook: playbooks/nextcloud-auth.yml
