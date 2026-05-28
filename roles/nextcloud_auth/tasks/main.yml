@@ -361,6 +361,26 @@
 # ──────────────────────────────────────────────
 # OIDC-PROVIDER (tilføjes EFTER LDAP er verificeret)
 # ──────────────────────────────────────────────
+- name: Vis tilgængelige flag for user_oidc:provider (diagnostik)
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - --user
+      - www-data
+      - nextcloud-aio-nextcloud
+      - php
+      - occ
+      - user_oidc:provider
+      - --help
+  register: _oidc_help
+  changed_when: false
+  failed_when: false
+
+- name: Debug — user_oidc:provider help output
+  ansible.builtin.debug:
+    var: _oidc_help.stdout
+
 - name: Konfigurér OIDC-provider i Nextcloud
   ansible.builtin.command:
     argv:
@@ -381,8 +401,21 @@
       - "--mapping-uid=sub"
       - "--mapping-displayname=name"
       - "--mapping-email=email"
+  register: _oidc_provider_result
   changed_when: false
   no_log: true
+  failed_when: false
+
+- name: Debug — user_oidc:provider fejlbesked (uden credentials)
+  ansible.builtin.debug:
+    msg: "rc={{ _oidc_provider_result.rc }} stderr={{ _oidc_provider_result.stderr }}"
+  when: _oidc_provider_result.rc != 0
+
+- name: Bekræft at OIDC-provider blev konfigureret
+  ansible.builtin.assert:
+    that: _oidc_provider_result.rc == 0
+    fail_msg: "user_oidc:provider fejlede — se debug-output ovenfor"
+    success_msg: "OIDC-provider 'authentik' konfigureret i Nextcloud."
 
 # ──────────────────────────────────────────────
 # VERIFIKATION
