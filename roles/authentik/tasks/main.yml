@@ -153,4 +153,8 @@
     url: "https://{{ authentik_domain }}"
     status_code: [200, 302]
     validate_certs: true
+  register: _authentik_https
+  retries: 12
+  delay: 10
+  until: _authentik_https.status in [200, 302]
   changed_when: false
