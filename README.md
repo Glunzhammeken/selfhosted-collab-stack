@@ -132,52 +132,18 @@ Det er alt. Subdomæner, LDAP base DN og alle andre domæne-afhængige værdier 
 
 ## Brug
 
-### deploy.sh — den nemme vej
+### deploy.sh
 
-Projektet indeholder et deploy-script der tjekker forudsætninger og tilbyder en interaktiv menu:
+Scriptet tjekker forudsætninger (Ansible, `config.yml`, collections) og kører derefter den komplette deploy:
 
 ```bash
 ./deploy.sh
 ```
 
-```
-  Selfhosted Collab Stack
+Det er alt. Første kørsel tager **15-30 minutter** — Authentik, Mailcow og Nextcloud downloader alle deres Docker-images. Scriptet er idempotent — det er sikkert at køre igen.
 
-  1)  Fuld deploy        alle faser i korrekt rækkefølge
-  2)  Infrastruktur      baseline · hardening · docker · nginx
-  3)  Apps               Authentik · Mailcow · Nextcloud
-  4)  LDAP-outpost       Authentik LDAP-outpost + testbrugere
-  5)  Mailcow LDAP       Mailcow → Authentik integration
-  6)  Nextcloud auth     Nextcloud OIDC + LDAP
-  7)  Dry-run            fuld tjekrunde, ingen ændringer
-  q)  Afslut
-```
-
-Du kan også give valget direkte som argument:
-
-```bash
-./deploy.sh full          # fuld deploy
-./deploy.sh apps          # kun apps
-./deploy.sh check         # dry-run
-```
-
-Scriptet verificerer automatisk at Ansible er installeret, `config.yml` er udfyldt og collections er installeret — inden der køres noget.
-
-### Manuelt (direkte ansible-playbook)
-
-```bash
-ansible-playbook site.yml                     # fuld deploy
-ansible-playbook playbooks/apps.yml           # kun apps
-ansible-playbook playbooks/ldap.yml           # kun LDAP-outpost
-ansible-playbook playbooks/mail-ldap.yml      # kun Mailcow LDAP
-ansible-playbook playbooks/nextcloud-auth.yml # kun Nextcloud auth
-ansible-playbook site.yml --check             # dry-run
-```
-
-> **Hvis playbooken stopper med "reboot påkrævet":**
-> En kernel-opdatering kræver genstart. Kør `sudo reboot`, log ind igen, og kør `./deploy.sh full` forfra. Anden gang springer den kernel-tjekket over og fortsætter.
-
-Første kørsel tager **15-30 minutter** — Authentik, Mailcow og Nextcloud downloader alle deres Docker-images. Alle playbooks er idempotente — det er sikkert at køre dem igen.
+> **Hvis scriptet stopper med "reboot påkrævet":**
+> En kernel-opdatering kræver genstart. Kør `sudo reboot`, log ind igen, og kør `./deploy.sh` forfra.
 
 ---
 
