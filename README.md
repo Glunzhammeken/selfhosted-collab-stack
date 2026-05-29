@@ -86,7 +86,7 @@ sudo apt update && sudo apt install -y python3-pip pipx && pipx install ansible 
 ### Trin 1 — Klon og klargør
 
 ```bash
-git clone https://github.com/Glunzhammeken/selfhosted-collab-stack.git ~/selfhosted-collab-stack && cd ~/selfhosted-collab-stack && ansible-galaxy collection install -r requirements.yml && cp inventories/opgavehelten/hosts.yml.example inventories/opgavehelten/hosts.yml && cp group_vars/all/config.yml.example group_vars/all/config.yml
+git clone https://github.com/Glunzhammeken/selfhosted-collab-stack.git ~/selfhosted-collab-stack; cd ~/selfhosted-collab-stack && ansible-galaxy collection install -r requirements.yml && cp inventories/opgavehelten/hosts.yml.example inventories/opgavehelten/hosts.yml && cp group_vars/all/config.yml.example group_vars/all/config.yml
 ```
 
 ### Trin 2 — Udfyld konfiguration
