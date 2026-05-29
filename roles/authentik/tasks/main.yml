@@ -40,6 +40,44 @@
     path: "{{ authentik_dir }}/.env"
   register: authentik_env_stat
 
+- name: Tjek om bootstrap-token allerede er genereret
+  ansible.builtin.stat:
+    path: "{{ authentik_dir }}/bootstrap_token"
+  register: _bootstrap_stat
+
+- name: Generér bootstrap API-token og gem det
+  ansible.builtin.shell:
+    cmd: "openssl rand -hex 32 > {{ authentik_dir }}/bootstrap_token"
+  when: not _bootstrap_stat.stat.exists
+  no_log: true
+  changed_when: true
+
+- name: Sæt filrettigheder på bootstrap-token
+  ansible.builtin.file:
+    path: "{{ authentik_dir }}/bootstrap_token"
+    mode: "0600"
+    owner: root
+    group: root
+
+- name: Læs bootstrap-token
+  ansible.builtin.slurp:
+    src: "{{ authentik_dir }}/bootstrap_token"
+  register: _bootstrap_raw
+  no_log: true
+
+- name: Sæt bootstrap-token som fact
+  ansible.builtin.set_fact:
+    _bootstrap_token: "{{ _bootstrap_raw.content | b64decode | trim }}"
+  no_log: true
+
+- name: Tilføj AUTHENTIK_BOOTSTRAP_TOKEN til .env (kun hvis ikke der)
+  ansible.builtin.lineinfile:
+    path: "{{ authentik_dir }}/.env"
+    regexp: '^AUTHENTIK_BOOTSTRAP_TOKEN='
+    line: "AUTHENTIK_BOOTSTRAP_TOKEN={{ _bootstrap_token }}"
+  no_log: true
+  register: _bootstrap_env_updated
+
 - name: Generér PostgreSQL-adgangskode
   ansible.builtin.command: openssl rand -hex 32
   register: pg_pass_result
@@ -87,6 +125,13 @@
     cmd: docker compose pull
     chdir: "{{ authentik_dir }}"
   when: authentik_running.stdout == ''
+  changed_when: true
+
+- name: Genskab Authentik server (ny env-variabel: bootstrap token)
+  ansible.builtin.command:
+    cmd: docker compose up -d --no-deps server
+    chdir: "{{ authentik_dir }}"
+  when: _bootstrap_env_updated.changed
   changed_when: true
 
 - name: Start Authentik-stakken
