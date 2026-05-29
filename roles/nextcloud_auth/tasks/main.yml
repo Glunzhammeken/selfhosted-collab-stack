@@ -108,7 +108,7 @@
       - |
         from authentik.providers.oauth2.models import OAuth2Provider
         p = OAuth2Provider.objects.get(name='nextcloud-provider')
-        p.authorization_grant_types = ['authorization_code', 'refresh_token']
+        p.grant_types = ['authorization_code', 'refresh_token']
         p.save()
   changed_when: true
   retries: 6
