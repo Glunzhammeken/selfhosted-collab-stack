@@ -73,25 +73,23 @@ Opret følgende A-records **inden** du kører playbooks. Nginx-rollen verificere
 | `autodiscover.<domæne>` | Serverens offentlige IP |
 | `autoconfig.<domæne>` | Serverens offentlige IP |
 
-### Ansible på serveren
-
-```bash
-sudo apt update && sudo apt install -y python3-pip pipx && pipx install ansible && pipx ensurepath && source ~/.bashrc
-```
-
----
-
 ## Første gangs opsætning
 
-### Trin 1 — Klon og klargør
+### Trin 1 — Installér og klargør
+
+Kør dette på den friske server:
 
 ```bash
-git clone https://github.com/Glunzhammeken/selfhosted-collab-stack.git ~/selfhosted-collab-stack; cd ~/selfhosted-collab-stack && ansible-galaxy collection install -r requirements.yml && cp inventories/opgavehelten/hosts.yml.example inventories/opgavehelten/hosts.yml && cp group_vars/all/config.yml.example group_vars/all/config.yml
+sudo apt update && sudo apt install -y python3-pip pipx && pipx install ansible && pipx ensurepath && export PATH="$PATH:$HOME/.local/bin" && git clone https://github.com/Glunzhammeken/selfhosted-collab-stack.git ~/selfhosted-collab-stack; cd ~/selfhosted-collab-stack && ansible-galaxy collection install -r requirements.yml && cp inventories/opgavehelten/hosts.yml.example inventories/opgavehelten/hosts.yml && cp group_vars/all/config.yml.example group_vars/all/config.yml
 ```
 
 ### Trin 2 — Udfyld konfiguration
 
-Åbn `group_vars/all/config.yml` og ret de tre linjer:
+```bash
+nano group_vars/all/config.yml
+```
+
+Ret de tre linjer:
 
 ```yaml
 nginx_domain: "ditdomæne.dk"
@@ -99,7 +97,7 @@ nginx_certbot_email: "dig@ditdomæne.dk"
 mailcow_timezone: "Europe/Copenhagen"
 ```
 
-Subdomæner, LDAP base DN og alle andre domæne-afhængige værdier udledes automatisk fra `nginx_domain`.
+Gem med `Ctrl+O` → Enter → `Ctrl+X`.
 
 ### Trin 3 — Deploy
 
