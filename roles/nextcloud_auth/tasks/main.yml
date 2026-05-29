@@ -93,52 +93,6 @@
   changed_when: true
 
 # ──────────────────────────────────────────────
-# GRANT TYPES VIA API (blueprints sætter ikke multi-choice felter pålideligt)
-# ──────────────────────────────────────────────
-- name: Læs Authentik bootstrap-token
-  ansible.builtin.slurp:
-    src: "{{ authentik_dir }}/bootstrap_token"
-  register: _auth_bootstrap_raw
-  no_log: true
-
-- name: Sæt bootstrap-token som fact
-  ansible.builtin.set_fact:
-    _auth_token: "{{ _auth_bootstrap_raw.content | b64decode | trim }}"
-  no_log: true
-
-- name: Find nextcloud-provider ID via Authentik API
-  ansible.builtin.uri:
-    url: "https://{{ authentik_domain }}/api/v3/providers/oauth2/?name=nextcloud-provider"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ _auth_token }}"
-    status_code: 200
-    validate_certs: true
-  register: _provider_list
-  retries: 6
-  delay: 10
-  until: _provider_list.status == 200 and _provider_list.json.count > 0
-  changed_when: false
-  no_log: true
-
-- name: Sæt grant types på nextcloud-provider via API
-  ansible.builtin.uri:
-    url: "https://{{ authentik_domain }}/api/v3/providers/oauth2/{{ _provider_list.json.results[0].pk }}/"
-    method: PATCH
-    headers:
-      Authorization: "Bearer {{ _auth_token }}"
-      Content-Type: "application/json"
-    body_format: json
-    body:
-      authorization_grant_types:
-        - authorization_code
-        - refresh_token
-    status_code: 200
-    validate_certs: true
-  changed_when: true
-  no_log: true
-
-# ──────────────────────────────────────────────
 # VENT PÅ AT OIDC DISCOVERY ENDPOINT ER KLAR
 # Bekræfter at blueprint er importeret og provider er aktiv.
 # ──────────────────────────────────────────────
