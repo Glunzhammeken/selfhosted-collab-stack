@@ -93,30 +93,6 @@
   changed_when: true
 
 # ──────────────────────────────────────────────
-# GRANT TYPES — sættes direkte via Django-shell
-# Authentik blueprints sætter ikke MultipleChoiceField korrekt.
-# ──────────────────────────────────────────────
-- name: Sæt authorization_grant_types på nextcloud-provider
-  ansible.builtin.command:
-    argv:
-      - docker
-      - exec
-      - authentik-worker-1
-      - ak
-      - shell
-      - -c
-      - |
-        from authentik.providers.oauth2.models import OAuth2Provider
-        p = OAuth2Provider.objects.get(name='nextcloud-provider')
-        p.grant_types = ['authorization_code', 'refresh_token']
-        p.save()
-  changed_when: true
-  retries: 6
-  delay: 10
-  register: _grant_types_result
-  until: _grant_types_result.rc == 0
-
-# ──────────────────────────────────────────────
 # VENT PÅ AT OIDC DISCOVERY ENDPOINT ER KLAR
 # Bekræfter at blueprint er importeret og provider er aktiv.
 # ──────────────────────────────────────────────
