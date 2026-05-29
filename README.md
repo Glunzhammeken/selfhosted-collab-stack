@@ -80,30 +80,29 @@ Opret følgende A-records **inden** du kører playbooks. Nginx-rollen verificere
 Kør dette på den friske server:
 
 ```bash
-sudo apt update && sudo apt install -y python3-pip pipx && pipx install ansible-core --force && export PATH="$PATH:$HOME/.local/bin" && git clone https://github.com/Glunzhammeken/selfhosted-collab-stack.git ~/selfhosted-collab-stack; cd ~/selfhosted-collab-stack && ansible-galaxy collection install -r requirements.yml && cp --update=none inventories/opgavehelten/hosts.yml.example inventories/opgavehelten/hosts.yml && cp --update=none group_vars/all/config.yml.example group_vars/all/config.yml
+sudo apt update && sudo apt install -y python3-pip pipx && pipx install ansible-core --force && export PATH="$PATH:$HOME/.local/bin" && git clone https://github.com/Glunzhammeken/selfhosted-collab-stack.git ~/selfhosted-collab-stack; cd ~/selfhosted-collab-stack && ansible-galaxy collection install -r requirements.yml && ./onboard.sh
 ```
 
-### Trin 2 — Udfyld konfiguration
+### Trin 2 — Følg onboarding-scriptet
 
-```bash
-nano group_vars/all/config.yml
+Scriptet spørger om domæne, e-mail og tidszone, skriver konfigurationen og starter deploy automatisk:
+
+```
+  Selfhosted Collab Stack — opsætning
+  ─────────────────────────────────────────────────
+  Domæne (f.eks. opgavehelten.dk): opgavehelten.dk
+  E-mail til Let's Encrypt: dig@eksempel.dk
+  Tidszone [Europe/Copenhagen]:
+
+  Bekræft konfiguration:
+  Domæne:   opgavehelten.dk
+  E-mail:   dig@eksempel.dk
+  Tidszone: Europe/Copenhagen
+  ─────────────────────────────────────────────────
+  Er dette korrekt? [J/n]:
 ```
 
-Ret de tre linjer:
-
-```yaml
-nginx_domain: "ditdomæne.dk"
-nginx_certbot_email: "dig@ditdomæne.dk"
-mailcow_timezone: "Europe/Copenhagen"
-```
-
-Gem med `Ctrl+O` → Enter → `Ctrl+X`.
-
-### Trin 3 — Deploy
-
-```bash
-./deploy.sh
-```
+Det er alt — deploy starter med det samme.
 
 ---
 
@@ -202,7 +201,8 @@ Disse filer har rettighederne `0600` og ejeres af root. De berøres ikke ved eft
 ```
 selfhosted-collab-stack/
 ├── site.yml                          # Master playbook — kører alle faser
-├── deploy.sh                         # Deploy-script med interaktiv menu
+├── onboard.sh                        # Onboarding: spørg om domæne/email → deploy
+├── deploy.sh                         # Deploy-script (køres af onboard.sh)
 ├── ansible.cfg                       # Standardinventory og Python-indstillinger
 ├── requirements.yml                  # Ansible collections (community.general)
 │
