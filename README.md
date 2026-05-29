@@ -80,7 +80,7 @@ Opret følgende A-records **inden** du kører playbooks. Nginx-rollen verificere
 Kør dette på den friske server:
 
 ```bash
-sudo apt update && sudo apt install -y python3-pip pipx && pipx install ansible && pipx ensurepath && export PATH="$PATH:$HOME/.local/bin" && git clone https://github.com/Glunzhammeken/selfhosted-collab-stack.git ~/selfhosted-collab-stack; cd ~/selfhosted-collab-stack && ansible-galaxy collection install -r requirements.yml && cp inventories/opgavehelten/hosts.yml.example inventories/opgavehelten/hosts.yml && cp group_vars/all/config.yml.example group_vars/all/config.yml
+sudo apt update && sudo apt install -y python3-pip pipx && pipx install ansible --force && export PATH="$PATH:$HOME/.local/bin" && git clone https://github.com/Glunzhammeken/selfhosted-collab-stack.git ~/selfhosted-collab-stack; cd ~/selfhosted-collab-stack && ansible-galaxy collection install -r requirements.yml && cp -n inventories/opgavehelten/hosts.yml.example inventories/opgavehelten/hosts.yml && cp -n group_vars/all/config.yml.example group_vars/all/config.yml
 ```
 
 ### Trin 2 — Udfyld konfiguration
