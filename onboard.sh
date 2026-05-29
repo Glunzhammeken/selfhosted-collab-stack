@@ -52,17 +52,18 @@ if [[ "$confirm" =~ ^[Nn] ]]; then
 fi
 
 # Skriv config.yml
-cp group_vars/all/config.yml.example group_vars/all/config.yml
-sed -i "s|nginx_domain: \"ditdomæne.dk\"|nginx_domain: \"$domain\"|" group_vars/all/config.yml
-sed -i "s|nginx_certbot_email: \"dig@ditdomæne.dk\"|nginx_certbot_email: \"$email\"|" group_vars/all/config.yml
-sed -i "s|mailcow_timezone: \"Europe/Copenhagen\"|mailcow_timezone: \"$timezone\"|" group_vars/all/config.yml
+mkdir -p inventories/opgavehelten/group_vars/all
+cp inventories/opgavehelten/group_vars/all/config.yml.example inventories/opgavehelten/group_vars/all/config.yml
+sed -i "s|nginx_domain: \"ditdomæne.dk\"|nginx_domain: \"$domain\"|" inventories/opgavehelten/group_vars/all/config.yml
+sed -i "s|nginx_certbot_email: \"dig@ditdomæne.dk\"|nginx_certbot_email: \"$email\"|" inventories/opgavehelten/group_vars/all/config.yml
+sed -i "s|mailcow_timezone: \"Europe/Copenhagen\"|mailcow_timezone: \"$timezone\"|" inventories/opgavehelten/group_vars/all/config.yml
 
 # Kopier hosts.yml hvis den ikke findes
 [[ ! -f inventories/opgavehelten/hosts.yml ]] && \
     cp inventories/opgavehelten/hosts.yml.example inventories/opgavehelten/hosts.yml
 
 echo ""
-ok "Konfiguration gemt i group_vars/all/config.yml"
+ok "Konfiguration gemt"
 echo ""
 
 ./deploy.sh

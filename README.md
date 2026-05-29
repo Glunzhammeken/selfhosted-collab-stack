@@ -165,7 +165,7 @@ Det er alt. Første kørsel tager **15-30 minutter** — Authentik, Mailcow og N
 
 ### Nøglevariabler
 
-**Kundespecifikke** — sættes i `group_vars/all/config.yml`:
+**Kundespecifikke** — sættes i `inventories/opgavehelten/group_vars/all/config.yml` (skrives automatisk af `onboard.sh`):
 
 | Variabel | Eksempel | Beskrivelse |
 |---|---|---|
@@ -209,12 +209,13 @@ selfhosted-collab-stack/
 ├── inventories/
 │   └── opgavehelten/
 │       ├── hosts.yml                 # Local connection (gitignored)
-│       └── hosts.yml.example         # Skabelon — kopiér til hosts.yml
+│       ├── hosts.yml.example         # Skabelon — kopiér til hosts.yml
+│       └── group_vars/all/
+│           ├── config.yml            # Kundespecifik konfiguration (gitignored)
+│           └── config.yml.example    # Skabelon — udfyldes af onboard.sh
 │
 ├── group_vars/
 │   └── all/
-│       ├── config.yml                # Kundespecifik konfiguration (gitignored)
-│       ├── config.yml.example        # Skabelon — kopiér til config.yml
 │       └── vault.yml                 # Eventuelle krypterede secrets
 │
 ├── playbooks/

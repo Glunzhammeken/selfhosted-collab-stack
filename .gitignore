@@ -28,4 +28,4 @@ __pycache__/
 group_vars/all/vault.yml
 
 # Kundespecifik konfiguration: aldrig i Git — indeholder domæne og e-mail
-group_vars/all/config.yml
+inventories/*/group_vars/all/config.yml
