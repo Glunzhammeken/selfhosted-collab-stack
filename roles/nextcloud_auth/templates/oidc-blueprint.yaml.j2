@@ -5,6 +5,11 @@ metadata:
     blueprints.goauthentik.io/description: "Nextcloud OIDC provider og application"
 entries:
   - model: authentik_providers_oauth2.oauth2provider
+    state: absent
+    identifiers:
+      name: nextcloud-provider
+
+  - model: authentik_providers_oauth2.oauth2provider
     state: present
     id: nextcloud-provider
     identifiers:
