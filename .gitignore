@@ -26,3 +26,6 @@ __pycache__/
 # Ansible Vault-krypterede variabler: ignorér den ukrypterede version
 # Commit kun efter: ansible-vault encrypt group_vars/all/vault.yml
 group_vars/all/vault.yml
+
+# Kundespecifik konfiguration: aldrig i Git — indeholder domæne og e-mail
+group_vars/all/config.yml

@@ -1,7 +1,5 @@
 ---
-nginx_domain: "opgavehelten.dk"
-# Bør flyttes til Ansible Vault i produktion
-nginx_certbot_email: "andre-g-glunz@pm.me"
+# nginx_domain og nginx_certbot_email sættes i group_vars/all/config.yml
 nginx_subdomains:
   - cloud
   - auth

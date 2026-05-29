@@ -4,19 +4,19 @@ mailcow_dir: "/opt/mailcow"
 authentik_dir: "/opt/authentik"
 
 # Mail-domæne der oprettes manuelt i Mailcow UI
-mailcow_ldap_mail_domain: "opgavehelten.dk"
-mailcow_ldap_mail_domain_description: "Hovedomæne"
+mailcow_ldap_mail_domain: "{{ nginx_domain }}"
+mailcow_ldap_mail_domain_description: "Hoveddomæne"
 
 # URL til Mailcow UI — bruges kun i pause-prompts som klik-anvisning
-mailcow_ui_url: "https://{{ mailcow_hostname | default('mail.opgavehelten.dk') }}"
+mailcow_ui_url: "https://mail.{{ nginx_domain }}"
 
 # LDAP-bind mod Authentik-outposten
 mailcow_ldap_host: "ak-outpost-ldap-outpost"
 mailcow_ldap_port: 3389
 mailcow_ldap_use_ssl: false
 mailcow_ldap_use_tls: false
-mailcow_ldap_base_dn: "dc=opgavehelten,dc=dk"
-mailcow_ldap_bind_dn: "cn=ldapservice,ou=users,dc=opgavehelten,dc=dk"
+mailcow_ldap_base_dn: "dc={{ nginx_domain.split('.') | join(',dc=') }}"
+mailcow_ldap_bind_dn: "cn=ldapservice,ou=users,dc={{ nginx_domain.split('.') | join(',dc=') }}"
 mailcow_ldap_username_field: "mail"
 mailcow_ldap_filter: "(objectClass=user)"
 mailcow_ldap_attribute_field: "objectClass"

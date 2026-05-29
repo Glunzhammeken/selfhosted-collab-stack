@@ -1,10 +1,8 @@
 ---
 authentik_dir: "/opt/authentik"
-authentik_domain: "auth.opgavehelten.dk"
+authentik_domain: "auth.{{ nginx_domain }}"
 # Container-navn: compose-projektnavn (mappenavn) + service + replika
 authentik_container_name: "authentik-server-1"
 # Mappe under /etc/letsencrypt/live/ hvor certifikatet ligger (første subdomain)
-authentik_ssl_cert_dir: "cloud.opgavehelten.dk"
-# Bruges til AUTHENTIK_COOKIE_DOMAIN så SSO virker på tværs af subdomains
-nginx_domain: "opgavehelten.dk"
+authentik_ssl_cert_dir: "cloud.{{ nginx_domain }}"
 nginx_proxy_dir: "/opt/nginx-proxy"

@@ -1,13 +1,12 @@
 ---
 mailcow_dir: "/opt/mailcow"
-mailcow_hostname: "mail.opgavehelten.dk"
+mailcow_hostname: "mail.{{ nginx_domain }}"
 mailcow_timezone: "Europe/Copenhagen"
-mailcow_additional_server_names: "autodiscover.opgavehelten.dk,autoconfig.opgavehelten.dk"
+mailcow_additional_server_names: "autodiscover.{{ nginx_domain }},autoconfig.{{ nginx_domain }}"
 # Port 8082 undgår konflikt med Nextcloud AIO der bruger 8080
 mailcow_http_port: "8082"
 mailcow_https_port: "8443"
 # Container-navn sat eksplicit i override (bruges af Nginx til proxy)
 mailcow_container_name: "mailcow-nginx"
-mailcow_ssl_cert_dir: "cloud.opgavehelten.dk"
+mailcow_ssl_cert_dir: "cloud.{{ nginx_domain }}"
 nginx_proxy_dir: "/opt/nginx-proxy"
-nginx_domain: "opgavehelten.dk"

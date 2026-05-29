@@ -104,79 +104,80 @@ ansible-galaxy collection install -r requirements.yml
 
 ### 3. Opret inventory
 
-Projektet indeholder en skabelon. Kopiér den:
-
 ```bash
 cp inventories/opgavehelten/hosts.yml.example inventories/opgavehelten/hosts.yml
 ```
 
 Filen behøver ikke redigeres — stakken kører altid lokalt (`ansible_connection: local`).
 
-### 4. Tilpas domæne og e-mail
+### 4. Opret kundespecifik konfiguration
 
-Åbn `roles/nginx/defaults/main.yml` og ret:
-
-```yaml
-nginx_domain: "ditdomæne.dk"          # dit domæne
-nginx_certbot_email: "dig@eksempel.dk" # e-mail til Let's Encrypt
-```
-
-Ret også domæner i de øvrige roller så de matcher. Søg efter `opgavehelten.dk` på tværs af `roles/*/defaults/main.yml` og erstat med dit domæne:
+Al kundespecifik konfiguration samles i én fil. Kopiér skabelonen og udfyld de tre værdier:
 
 ```bash
-grep -r "opgavehelten.dk" roles/*/defaults/main.yml
+cp group_vars/all/config.yml.example group_vars/all/config.yml
 ```
-
-### 5. (Valgfrit) Aktiver Let's Encrypt staging under test
-
-Undgå at ramme Let's Encrypts rate limits mens du tester:
 
 ```yaml
-# roles/nginx/defaults/main.yml
-nginx_certbot_staging: true
+# group_vars/all/config.yml
+nginx_domain: "ditdomæne.dk"
+nginx_certbot_email: "dig@ditdomæne.dk"
+mailcow_timezone: "Europe/Copenhagen"
+nginx_certbot_staging: false
 ```
 
-Husk at sætte den tilbage til `false` inden produktion.
+Det er alt. Subdomæner, LDAP base DN og alle andre domæne-afhængige værdier udledes automatisk fra `nginx_domain`.
 
 ---
 
 ## Brug
 
-### Fuld deploy (anbefalet første gang)
+### deploy.sh — den nemme vej
 
-Kør den komplette stakke i korrekt rækkefølge:
+Projektet indeholder et deploy-script der tjekker forudsætninger og tilbyder en interaktiv menu:
 
 ```bash
-ansible-playbook site.yml
+./deploy.sh
 ```
 
-Første kørsel tager **15-30 minutter** — Authentik, Mailcow og Nextcloud downloader alle deres Docker-images.
+```
+  Selfhosted Collab Stack
+
+  1)  Fuld deploy        alle faser i korrekt rækkefølge
+  2)  Infrastruktur      baseline · hardening · docker · nginx
+  3)  Apps               Authentik · Mailcow · Nextcloud
+  4)  LDAP-outpost       Authentik LDAP-outpost + testbrugere
+  5)  Mailcow LDAP       Mailcow → Authentik integration
+  6)  Nextcloud auth     Nextcloud OIDC + LDAP
+  7)  Dry-run            fuld tjekrunde, ingen ændringer
+  q)  Afslut
+```
+
+Du kan også give valget direkte som argument:
+
+```bash
+./deploy.sh full          # fuld deploy
+./deploy.sh apps          # kun apps
+./deploy.sh check         # dry-run
+```
+
+Scriptet verificerer automatisk at Ansible er installeret, `config.yml` er udfyldt og collections er installeret — inden der køres noget.
+
+### Manuelt (direkte ansible-playbook)
+
+```bash
+ansible-playbook site.yml                     # fuld deploy
+ansible-playbook playbooks/apps.yml           # kun apps
+ansible-playbook playbooks/ldap.yml           # kun LDAP-outpost
+ansible-playbook playbooks/mail-ldap.yml      # kun Mailcow LDAP
+ansible-playbook playbooks/nextcloud-auth.yml # kun Nextcloud auth
+ansible-playbook site.yml --check             # dry-run
+```
 
 > **Hvis playbooken stopper med "reboot påkrævet":**
-> En kernel-opdatering kræver genstart. Kør `sudo reboot`, log ind igen, og kør `ansible-playbook site.yml` forfra. Anden gang springer den kernel-tjekket over og fortsætter.
+> En kernel-opdatering kræver genstart. Kør `sudo reboot`, log ind igen, og kør `./deploy.sh full` forfra. Anden gang springer den kernel-tjekket over og fortsætter.
 
-### Kør kun en enkelt fase
-
-```bash
-# Kun infrastruktur (baseline, hardening, docker, nginx)
-ansible-playbook site.yml --tags infra   # kræver tags-support i site.yml
-
-# Eller kør en specifik playbook direkte:
-ansible-playbook playbooks/apps.yml          # Fase 2: Authentik, Mailcow, Nextcloud
-ansible-playbook playbooks/ldap.yml          # Fase 3: LDAP-outpost
-ansible-playbook playbooks/mail-ldap.yml     # Fase 4a: Mailcow LDAP
-ansible-playbook playbooks/nextcloud-auth.yml # Fase 4b: Nextcloud OIDC+LDAP
-```
-
-### Kør i dry-run (ingen ændringer)
-
-```bash
-ansible-playbook site.yml --check
-```
-
-### Genkør efter ændringer
-
-Alle playbooks er idempotente — det er sikkert at køre dem igen. Eksisterende certifikater, secrets og containere genbruges.
+Første kørsel tager **15-30 minutter** — Authentik, Mailcow og Nextcloud downloader alle deres Docker-images. Alle playbooks er idempotente — det er sikkert at køre dem igen.
 
 ---
 
@@ -222,17 +223,23 @@ Alle playbooks er idempotente — det er sikkert at køre dem igen. Eksisterende
 
 ### Nøglevariabler
 
+**Kundespecifikke** — sættes i `group_vars/all/config.yml`:
+
+| Variabel | Eksempel | Beskrivelse |
+|---|---|---|
+| `nginx_domain` | `mitdomæne.dk` | Roddomæne — alt andet udledes herfra |
+| `nginx_certbot_email` | `dig@mitdomæne.dk` | E-mail til Let's Encrypt |
+| `mailcow_timezone` | `Europe/Copenhagen` | Tidszone til Mailcow |
+| `nginx_certbot_staging` | `false` | Brug Let's Encrypt staging under test |
+
+**Justerbare** — i de respektive `roles/*/defaults/main.yml`:
+
 | Fil | Variabel | Standard | Beskrivelse |
 |---|---|---|---|
-| `roles/nginx/defaults/main.yml` | `nginx_domain` | `opgavehelten.dk` | Roddomæne |
-| `roles/nginx/defaults/main.yml` | `nginx_certbot_email` | *(se fil)* | E-mail til Let's Encrypt |
-| `roles/nginx/defaults/main.yml` | `nginx_certbot_staging` | `false` | Brug Let's Encrypt staging |
 | `roles/hardening/defaults/main.yml` | `unattended_upgrades_reboot_time` | `04:00` | Tidspunkt for automatisk genstart |
 | `roles/baseline/defaults/main.yml` | `fail2ban_bantime` | `1h` | Spærringstid efter for mange fejlede login |
 | `roles/nextcloud/defaults/main.yml` | `nextcloud_upload_limit` | `16G` | Maks uploadstørrelse |
 | `roles/authentik_ldap/defaults/main.yml` | `authentik_testuser_password` | *(se fil)* | Adgangskode til testuser1/testuser2 |
-
-Variabler kan overskrives i `group_vars/all/` eller direkte i `inventories/opgavehelten/group_vars/`.
 
 ### Secrets
 
@@ -252,17 +259,20 @@ Disse filer har rettighederne `0600` og ejeres af root. De berøres ikke ved eft
 ```
 selfhosted-collab-stack/
 ├── site.yml                          # Master playbook — kører alle faser
+├── deploy.sh                         # Deploy-script med interaktiv menu
 ├── ansible.cfg                       # Standardinventory og Python-indstillinger
 ├── requirements.yml                  # Ansible collections (community.general)
 │
 ├── inventories/
 │   └── opgavehelten/
-│       ├── hosts.yml                 # Local connection — ingen IP/SSH nødvendig
-│       └── hosts.yml.example         # Skabelon til nye opsætninger
+│       ├── hosts.yml                 # Local connection (gitignored)
+│       └── hosts.yml.example         # Skabelon — kopiér til hosts.yml
 │
 ├── group_vars/
 │   └── all/
-│       └── vault.yml                 # Delte variabler og eventuelle secrets
+│       ├── config.yml                # Kundespecifik konfiguration (gitignored)
+│       ├── config.yml.example        # Skabelon — kopiér til config.yml
+│       └── vault.yml                 # Eventuelle krypterede secrets
 │
 ├── playbooks/
 │   ├── apps.yml                      # Fase 2: Authentik, Mailcow, Nextcloud

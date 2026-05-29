@@ -1,0 +1,17 @@
+---
+# Kundespecifik konfiguration
+# Kopiér denne fil: cp config.yml.example config.yml
+# Udfyld de tre værdier herunder — resten udledes automatisk.
+
+# Roddomæne — subdomæner (auth, mail, cloud) oprettes automatisk
+nginx_domain: "ditdomæne.dk"
+
+# E-mail til Let's Encrypt (certifikat-advarsler sendes hertil)
+nginx_certbot_email: "dig@ditdomæne.dk"
+
+# Tidszone til Mailcow
+mailcow_timezone: "Europe/Copenhagen"
+
+# Sæt true under test for at undgå Let's Encrypts rate limits.
+# HUSK at sætte den tilbage til false inden produktion.
+nginx_certbot_staging: false
