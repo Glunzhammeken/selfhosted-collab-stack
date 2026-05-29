@@ -76,57 +76,36 @@ Opret følgende A-records **inden** du kører playbooks. Nginx-rollen verificere
 ### Ansible på serveren
 
 ```bash
-# Ubuntu 24.04
-sudo apt update
-sudo apt install -y python3-pip pipx
-pipx install ansible
-pipx ensurepath
-# Log ind igen så PATH opdateres, eller kør:
-source ~/.bashrc
+sudo apt update && sudo apt install -y python3-pip pipx && pipx install ansible && pipx ensurepath && source ~/.bashrc
 ```
 
 ---
 
 ## Første gangs opsætning
 
-### 1. Klon projektet
+### Trin 1 — Klon og klargør
 
 ```bash
-git clone https://github.com/Glunzhammeken/selfhosted-collab-stack.git ~/selfhosted-collab-stack
-cd ~/selfhosted-collab-stack
+git clone https://github.com/Glunzhammeken/selfhosted-collab-stack.git ~/selfhosted-collab-stack && cd ~/selfhosted-collab-stack && ansible-galaxy collection install -r requirements.yml && cp inventories/opgavehelten/hosts.yml.example inventories/opgavehelten/hosts.yml && cp group_vars/all/config.yml.example group_vars/all/config.yml
 ```
 
-### 2. Installér Ansible-collections
+### Trin 2 — Udfyld konfiguration
 
-```bash
-ansible-galaxy collection install -r requirements.yml
-```
-
-### 3. Opret inventory
-
-```bash
-cp inventories/opgavehelten/hosts.yml.example inventories/opgavehelten/hosts.yml
-```
-
-Filen behøver ikke redigeres — stakken kører altid lokalt (`ansible_connection: local`).
-
-### 4. Opret kundespecifik konfiguration
-
-Al kundespecifik konfiguration samles i én fil. Kopiér skabelonen og udfyld de tre værdier:
-
-```bash
-cp group_vars/all/config.yml.example group_vars/all/config.yml
-```
+Åbn `group_vars/all/config.yml` og ret de tre linjer:
 
 ```yaml
-# group_vars/all/config.yml
 nginx_domain: "ditdomæne.dk"
 nginx_certbot_email: "dig@ditdomæne.dk"
 mailcow_timezone: "Europe/Copenhagen"
-nginx_certbot_staging: false
 ```
 
-Det er alt. Subdomæner, LDAP base DN og alle andre domæne-afhængige værdier udledes automatisk fra `nginx_domain`.
+Subdomæner, LDAP base DN og alle andre domæne-afhængige værdier udledes automatisk fra `nginx_domain`.
+
+### Trin 3 — Deploy
+
+```bash
+./deploy.sh
+```
 
 ---
 
