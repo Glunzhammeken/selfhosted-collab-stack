@@ -92,7 +92,7 @@ source ~/.bashrc
 ### 1. Klon projektet
 
 ```bash
-git clone <repo-url> ~/selfhosted-collab-stack
+git clone https://github.com/Glunzhammeken/selfhosted-collab-stack.git ~/selfhosted-collab-stack
 cd ~/selfhosted-collab-stack
 ```
 
